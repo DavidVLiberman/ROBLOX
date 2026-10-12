@@ -1,6 +1,8 @@
 # Natural Disaster Survival — web remake
 
 A browser recreation of the classic round-based Roblox survival game, playable as a static website. Made by David.
+
+**Play it: https://davidvliberman.github.io/ROBLOX/** — share the link and everyone who opens it lands in the same server.
 You play as the classic **Noob** (yellow head & arms, blue torso, green legs, Smile face), get dropped
 onto a random map with other players, read the warning, and try to survive the disaster.
 
@@ -41,8 +43,9 @@ python3 -m http.server 8000
 Upload the repository root to any static host (GitHub Pages, Netlify, Vercel, Cloudflare Pages, S3…).
 `index.html` is the entry point.
 
-For GitHub Pages, `.github/workflows/pages.yml` deploys the site on every push to `main`.
-Enable it once under **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+This repository is published with GitHub Pages straight from its default branch: every push redeploys
+https://davidvliberman.github.io/ROBLOX/ within a minute or two. (`.github/workflows/pages.yml` is an
+alternative that deploys from `main` if Pages is switched to **Source: GitHub Actions**.)
 
 ## What's in it
 
