@@ -5,7 +5,7 @@ export default {
   name: 'Meteor Shower',
   warning: 'Meteor Shower! Watch the skies and find shelter',
   icon: '☄️',
-  duration: 60,
+  duration: 95,
   sky: 'clear',
   bot: 'indoor-low',
   start(g, st) {

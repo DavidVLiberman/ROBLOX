@@ -9,7 +9,7 @@ export default {
   name: 'Deadly Virus',
   warning: 'Deadly Virus! Avoid crowd',
   icon: '🦠',
-  duration: 60,
+  duration: 90,
   sky: 'clear',
   bot: 'avoid-crowd',
   start(g, st) {

@@ -5,7 +5,7 @@ export default {
   name: 'Flash Flood',
   warning: 'Flash Flood! Seek high and stable ground',
   icon: '🌊',
-  duration: 70,
+  duration: 60,
   sky: 'dark',
   bot: 'high',
   preWarn(g) {

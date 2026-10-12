@@ -8,7 +8,7 @@ export default {
   name: 'Fire',
   warning: 'Fire! Keep distance from the fire',
   icon: '🔥',
-  duration: 60,
+  duration: 95,
   sky: 'clear',
   bot: 'away-fire',
   start(g, st) {

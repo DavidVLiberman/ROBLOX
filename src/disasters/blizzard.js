@@ -17,7 +17,7 @@ export default {
   name: 'Blizzard',
   warning: 'Blizzard! Seek warmth and find shelter',
   icon: '❄️',
-  duration: 60,
+  duration: 90,
   sky: 'white',
   bot: 'indoor',
   preWarn(g) { g.effects.setSky('snowy'); },

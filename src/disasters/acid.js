@@ -7,7 +7,7 @@ export default {
   name: 'Acid Rain',
   warning: 'Acid Rain! Stay indoors',
   icon: '☣️',
-  duration: 60,
+  duration: 95,
   sky: 'acid',
   bot: 'indoor-low',
   preWarn(g) {

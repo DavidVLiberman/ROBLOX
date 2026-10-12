@@ -7,7 +7,7 @@ export default {
   name: 'Thunder Storm',
   warning: "Thunder Storm! Don't stand in the open or in high places",
   icon: '⚡',
-  duration: 60,
+  duration: 95,
   sky: 'dark',
   bot: 'indoor',
   preWarn(g) {

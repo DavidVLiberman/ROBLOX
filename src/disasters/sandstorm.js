@@ -4,7 +4,7 @@ export default {
   name: 'Sandstorm',
   warning: 'Sandstorm! Dodge flying objects',
   icon: '🏜️',
-  duration: 60,
+  duration: 90,
   sky: 'yellow',
   bot: 'upwind',
   preWarn(g, st) {

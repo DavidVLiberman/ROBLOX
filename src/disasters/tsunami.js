@@ -9,7 +9,7 @@ export default {
   name: 'Tsunami',
   warning: 'Tsunami! Get to the higher ground',
   icon: '🌊',
-  duration: 60,
+  duration: 90,
   sky: 'clear',
   bot: 'high-ish',
   preWarn(g, st) {
@@ -19,7 +19,7 @@ export default {
     st.dir ||= V(1, 0, 0);
     // usually about the second-tallest floor: high roofs survive, the tallest tower tends to collapse
     const h = clamp(g.map.tallest * 0.68, 18, 56);
-    st.waves = [{ delay: 4, height: h }, { delay: 30, height: h * 0.7 }];
+    st.waves = [{ delay: 4, height: h }, { delay: 42, height: h * 0.7 }];
     st.t = 0;
     st.roar = false;
     // rushing water sound plays before the wave arrives

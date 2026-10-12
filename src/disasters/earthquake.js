@@ -4,7 +4,7 @@ export default {
   name: 'Earthquake',
   warning: 'Earthquake! Get outside and stay away from tall structures',
   icon: '🫨',
-  duration: 50,
+  duration: 80,
   sky: 'clear',
   bot: 'open',
   start(g, st) {

@@ -300,6 +300,18 @@ class Game {
     }
   }
 
+  // "Capture" from the top bar menu: save a screenshot
+  capture() {
+    this.captureNext = false;
+    try {
+      const a = document.createElement('a');
+      a.href = this.renderer.domElement.toDataURL('image/png');
+      a.download = `NaturalDisasterSurvival-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+      a.click();
+      this.ui.notify('Capture saved', 'Your screenshot was downloaded.');
+    } catch { this.ui.notify('Capture failed', 'Your browser blocked the screenshot.'); }
+  }
+
   debrisDamage() {
     const fast = [];
     for (const p of this.world.dynamic) {
@@ -387,6 +399,7 @@ class Game {
     this.input.endFrame();
     const t1 = performance.now();
     this.renderer.render(this.scene, this.camera);
+    if (this.captureNext) this.capture();
     const t2 = performance.now();
     this.perf = this.perf || { logic: 0, render: 0, frame: 0 };
     this.perf.logic += (t1 - t0 - this.perf.logic) * 0.05;

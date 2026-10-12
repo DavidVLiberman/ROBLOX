@@ -39,9 +39,27 @@ Enable it once under **Settings → Pages → Build and deployment → Source: G
 | Items | Green Balloon, Red Apple, Yellow Compass, Blue Hammer (12/day) — all free here. |
 | Progression | Survivals + streak saved in `localStorage`; all badges from the spec (milestones, streaks, Close Call, Chance, map/disaster combos, Rocket Escape, Multi-Disaster 2–7). |
 | Players | Simulated server players (bots) that wander the lobby, explore, and then pick a spot depending on the warning (high ground, indoors, open ground, away from the hazard). |
-| Roblox interface | Recreated in HTML/CSS (no copied Roblox image files): top bar (menu, chat, player list/backpack on mobile), chat window + bubble chat with Roblox name colours, player list with a Survivals column (Tab), backpack hotbar + inventory with Search (` key) where tools show their names like icon-less Roblox tools, ProximityPrompts, Roblox-style notifications ("Badge Awarded"), the "Buy Item" purchase prompt, and the Esc menu with People / Settings / Report / Help tabs plus Reset Character [R], Leave [L], Resume [Esc]. Mobile thumbstick + jump button. |
+| Roblox interface | Recreated in HTML/CSS (no copied Roblox image files): top bar (Roblox menu button + ≡ menu with Leaderboard / Backpack / Capture / Report, chat toggle), chat window + bubble chat with Roblox name colours, player list with a Survivals column (Tab), backpack hotbar + inventory with Search (` key) where tools show their names like icon-less Roblox tools, ProximityPrompts, Roblox-style notifications ("Badge Awarded"), the "Buy Item" purchase prompt, and the Esc menu with People / Settings / Report / Help tabs plus Reset Character [R], Leave [L], Resume [Esc]. Mobile thumbstick + jump button. |
 | Game GUI | Status bar, disaster warning, health bar, survivors list, Compass map vote, item buttons. |
 | Sound | All synthesized with WebAudio (rain, wind, thunder, rumble, water roar, explosions, coughs, chime). |
+
+## Where the interface details come from
+
+- **Backpack / hotbar / inventory:** constants from Roblox's open-sourced `BackpackScript.lua` (github.com/Roblox/Core-Scripts):
+  60px square slots with 5px gaps, background rgb(31,31,31) at 50% opacity, a blue rgb(90,142,233) equipped border at 10% thickness,
+  tool names in SourceSans 14 when a tool has no icon, a gray 16px tooltip, and a 655×320 inventory with a 190×30 search box.
+- **Health colours:** `TopbarConstants.lua` (red 255,28,0 → yellow 250,235,0 → green 27,252,107).
+- **Chat and bubble chat:** default `ChatWindowConfiguration`, `ChatInputBarConfiguration` and `BubbleChatConfiguration`
+  values from Roblox's creator docs (github.com/Roblox/creator-docs).
+- **Top bar, leaderboard, ProximityPrompt, Esc menu, purchase prompt:** laid out from the official screenshots in Roblox's creator docs.
+- **Fonts:** Roblox's Builder Sans is licensed for on-platform use only, so Montserrat stands in for it. The game GUI uses Roboto, the
+  font Natural Disaster Survival switched to in its September 2023 UI redesign.
+- **Game details:** the survivors screen shows each survivor's remaining health, and disaster lengths follow the fan wiki's
+  per-disaster round durations.
+- **Animation:** limb motion follows the classic R6 `Animate` script (walk amplitude 1 at frequency 9, arms up when jumping or
+  falling, rate-limited joints).
+
+No Roblox image files are copied; icons are simple vector shapes drawn for this project.
 
 ## Controls
 

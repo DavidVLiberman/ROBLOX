@@ -39,6 +39,14 @@ const SHOP = {
 
 const _v = new THREE.Vector3();
 
+// Roblox health colours (TopbarConstants): red -> yellow -> green
+const H_RED = [255, 28, 0], H_YEL = [250, 235, 0], H_GRN = [27, 252, 107];
+export function healthColor(f) {
+  f = Math.max(0, Math.min(1, f));
+  const [a, b, t] = f > 0.5 ? [H_YEL, H_GRN, (f - 0.5) * 2] : [H_RED, H_YEL, f * 2];
+  return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(',')})`;
+}
+
 export class UI {
   constructor(game) {
     this.g = game;
@@ -89,11 +97,18 @@ export class UI {
     setTimeout(() => d.remove(), 7300 + index * 250);
   }
 
-  showSurvivors(names) {
+  // the survivors screen lists everyone who made it and the health they had left
+  showSurvivors(list) {
     const l = this.el.survivorList;
     l.innerHTML = '';
-    if (!names.length) { const li = document.createElement('li'); li.className = 'none'; li.textContent = 'No survivors'; l.appendChild(li); }
-    for (const n of names) { const li = document.createElement('li'); li.textContent = n; l.appendChild(li); }
+    if (!list.length) { const li = document.createElement('li'); li.className = 'none'; li.textContent = 'No survivors'; l.appendChild(li); }
+    for (const s of list) {
+      const li = document.createElement('li');
+      const f = s.health / s.max;
+      li.innerHTML = `<span class="sv-n"></span><span class="sv-bar"><i style="width:${(f * 100).toFixed(0)}%;background:${healthColor(f)}"></i></span><span class="sv-hp">${Math.ceil(s.health)}</span>`;
+      li.querySelector('.sv-n').textContent = s.name;
+      l.appendChild(li);
+    }
     this.el.survivors.classList.add('show');
   }
   hideSurvivors() { this.el.survivors.classList.remove('show'); }
@@ -159,21 +174,34 @@ export class UI {
 
   // ============================== top bar ==============================
   bindTopbar() {
-    $('tb-menu').onclick = () => this.toggleHub();
+    const more = $('tb-more'), menu = $('unibar-menu');
+    $('tb-menu').onclick = () => { this.closeUnibar(); this.toggleHub(); };
+    more.onclick = (e) => { e.stopPropagation(); const open = !menu.classList.contains('show'); menu.classList.toggle('show', open); more.classList.toggle('on', open); };
+    addEventListener('mousedown', (e) => { if (!menu.contains(e.target) && !more.contains(e.target)) this.closeUnibar(); });
+    for (const b of menu.querySelectorAll('button')) b.onclick = () => {
+      this.closeUnibar();
+      const act = b.dataset.act;
+      if (act === 'leaderboard') this.setPlayerList(this.el.playerlist.classList.contains('hidden'));
+      else if (act === 'backpack') this.toggleInventory();
+      else if (act === 'capture') this.g.captureNext = true;
+      else if (act === 'report') this.toggleHub(true, 'report');
+    };
     const setChat = (open) => {
       this.el.chat.classList.toggle('hidden', !open);
       $('tb-chat').classList.toggle('on', open);
       document.body.classList.toggle('chat-open', open);
     };
+    this.setChat = setChat;
     $('tb-chat').onclick = () => setChat(this.el.chat.classList.contains('hidden'));
-    // like Roblox mobile, chat starts collapsed on touch screens
-    setChat(!('ontouchstart' in window));
-    $('tb-backpack').onclick = () => this.toggleInventory();
-    // mobile: the player list starts collapsed behind a top bar button
-    const setList = (open) => { this.el.playerlist.classList.toggle('hidden', !open); $('tb-players').classList.toggle('on', open); };
-    $('tb-players').onclick = () => setList(this.el.playerlist.classList.contains('hidden'));
-    setList(!('ontouchstart' in window) || innerWidth > 700);
+    // like Roblox mobile, chat and the leaderboard start collapsed on small touch screens
+    const touch = 'ontouchstart' in window;
+    setChat(!touch);
+    document.querySelector('.pl-close').onclick = () => this.setPlayerList(false);
+    this.setPlayerList(!touch || innerWidth > 700);
   }
+
+  closeUnibar() { $('unibar-menu').classList.remove('show'); $('tb-more').classList.remove('on'); }
+  setPlayerList(open) { this.el.playerlist.classList.toggle('hidden', !open); }
 
   // ============================== chat ==============================
   bindChat() {
@@ -264,19 +292,18 @@ export class UI {
       if (e.key === '`' || e.key === '~') { e.preventDefault(); this.toggleInventory(); }
       if (e.key === 'Tab') {
         e.preventDefault();
-        this.el.playerlist.classList.toggle('hidden');
+        this.setPlayerList(this.el.playerlist.classList.contains('hidden'));
       }
     });
-    this.el.invSearch.addEventListener('input', () => { this._hb = null; });
+    this.el.invSearch.addEventListener('input', () => { this._hb = null; document.querySelector('.inv-search').classList.toggle('has', !!this.el.invSearch.value); });
     this.el.invSearch.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') this.el.invSearch.blur(); });
-    $('inv-clear').onclick = () => { this.el.invSearch.value = ''; this._hb = null; };
+    $('inv-clear').onclick = () => { this.el.invSearch.value = ''; this._hb = null; document.querySelector('.inv-search').classList.remove('has'); };
   }
 
   toggleInventory(force) {
     const open = force ?? !this.el.backpack.classList.contains('open');
     this.el.backpack.classList.toggle('open', open);
     document.body.classList.toggle('backpack-open', open);
-    $('tb-backpack').classList.toggle('on', open);
     this._hb = null;
   }
 
@@ -289,10 +316,11 @@ export class UI {
   slot(k, i, showNum) {
     const g = this.g, c = g.player;
     const b = document.createElement('button');
-    if (!k) { b.className = 'slot empty'; if (showNum) b.innerHTML = `<span class="num">${(i + 1) % 10}</span>`; return b; }
+    const showN = showNum && !g.input.isTouch;
+    if (!k) { b.className = 'slot empty'; if (showN) b.innerHTML = `<span class="num">${(i + 1) % 10}</span>`; return b; }
     const cd = k === 'apple' && (c.appleCd || 0) > g.time;
     b.className = 'slot' + (c.equipped === k ? ' equipped' : '') + (cd ? ' cooldown' : '');
-    b.innerHTML = `${showNum ? `<span class="num">${(i + 1) % 10}</span>` : ''}<span class="tname"></span><span class="tip"></span>`;
+    b.innerHTML = `${showN ? `<span class="num">${(i + 1) % 10}</span>` : ''}<span class="tname"></span><span class="tip"></span>`;
     b.querySelector('.tname').textContent = TOOLS[k];
     b.querySelector('.tip').textContent = TOOLS[k];
     b.onclick = (e) => { e.stopPropagation(); g.player.equip(k); g.audio.click(); this._hb = null; };
@@ -321,7 +349,7 @@ export class UI {
   playerList() {
     const g = this.g;
     const rows = [g.player, ...[...g.chars].filter(c => !c.isPlayer).sort((a, b) => b.survivals - a.survivals || a.name.localeCompare(b.name))];
-    const html = rows.map(c => `<div class="pl-row${c.isPlayer ? ' me' : ''}"><div class="pl-n"><span>${esc(c.name)}</span></div><div class="pl-v">${c.survivals}</div></div>`).join('');
+    const html = rows.map(c => `<div class="pl-row${c.isPlayer ? ' me' : ''}"><span class="pl-n">${esc(c.name)}</span><span class="pl-v">${c.survivals}</span></div>`).join('');
     if (html !== this._pl) { this.el.plRows.innerHTML = html; this._pl = html; }
   }
 
@@ -336,7 +364,7 @@ export class UI {
       if (this._pp) this._pp.remove();
       const d = document.createElement('div');
       d.className = 'pprompt';
-      d.innerHTML = `<div class="pp-key"><span>${this.g.input.isTouch ? '' : 'E'}</span></div><div class="pp-txt"><div class="pp-obj"></div><div class="pp-act"></div></div>`;
+      d.innerHTML = `<div class="pp-key"><div class="pp-ring">${this.g.input.isTouch ? '' : '<div class="pp-cap">E</div>'}</div></div><div class="pp-txt"><div class="pp-obj"></div><div class="pp-act"></div></div>`;
       d.onclick = () => this.g.interactNearest(true);
       layer.appendChild(d);
       this._pp = d; this._ppItem = item;
@@ -355,6 +383,7 @@ export class UI {
     const g = this.g, p = g.player;
     const hp = p.alive ? p.health : 0;
     this.el.health.style.width = `${(hp / p.maxHealth) * 100}%`;
+    this.el.health.style.background = healthColor(hp / p.maxHealth);
     this.el.healthText.textContent = String(Math.ceil(hp));
     this.el.cold.style.opacity = p.cold && p.alive ? 0.7 : 0;
     this.el.sick.style.opacity = p.infected && p.alive ? 0.6 : 0;
@@ -398,6 +427,7 @@ export class UI {
     for (const t of document.querySelectorAll('.hub-tab')) t.classList.toggle('on', t.dataset.tab === name);
     for (const p of document.querySelectorAll('.hub-page')) p.classList.toggle('on', p.dataset.page === name);
     document.querySelector('.hub-bottom').style.display = name === 'reset' || name === 'leave' ? 'none' : '';
+    if (name === 'home') this.renderHome();
     if (name === 'players') this.renderPlayers();
     if (name === 'settings') this.renderSettings();
     if (name === 'help') this.renderHelp();
@@ -436,7 +466,7 @@ export class UI {
   renderPlayers() {
     const g = this.g;
     const list = [g.player, ...g.chars.filter(c => !c.isPlayer)];
-    $('hub-players').innerHTML = `<div class="hub-section">${list.length} ${list.length === 1 ? 'person' : 'people'} in this server</div>` +
+    $('hub-players').innerHTML =
       list.map((c, i) => `<div class="player-row"><img data-i="${i}" alt=""><div class="pr-names"><span class="pr-dn">${esc(c.name)}</span><span class="pr-un">@${esc(c.name.replace(/\s+/g, '_'))}</span></div><span class="pr-tag">${c.isPlayer ? 'You' : `${c.survivals} survivals`}</span></div>`).join('');
     // headshots are real renders of each avatar
     const imgs = $('hub-players').querySelectorAll('img');
@@ -446,15 +476,21 @@ export class UI {
     });
   }
 
+  renderHome() {
+    $('hub-home').innerHTML = `<div class="home-info"><h2>Natural Disaster Survival</h2><div class="hi-by">By Stickmasterluke · browser fan remake</div>
+      <p>Survive a series of natural disasters! The map and disaster are picked at random each round. Read the warning, pick your spot, and stay alive until the timer runs out.</p>
+      <p>Round ${this.g.round.roundNo} · ${this.g.chars.length} people in this server · Your survivals: ${this.g.player.survivals} · Best streak: ${this.g.data.d.bestStreak || 0}</p></div>`;
+  }
+
   renderHelp() {
     const rows = [
       ['Move', ['W', 'A', 'S', 'D']], ['Jump', ['Space']], ['Rotate Camera', ['Right Mouse', '←', '→']], ['Zoom', ['I', 'O', 'Wheel']],
       ['Shift Lock', ['Shift']], ['Chat', ['/']], ['Backpack', ['`']], ['Equip Tool', ['1', '2', '3']], ['Use Tool', ['Left Click']],
       ['Interact', ['E']], ['Player List', ['Tab']], ['Menu', ['Esc']], ['Reset Character', ['Esc', 'R', 'Enter']],
     ];
-    $('hub-help').innerHTML = '<div class="hub-section">Keyboard &amp; Mouse</div><div class="help-grid">' +
+    $('hub-help').innerHTML = '<div class="help-grid">' +
       rows.map(([a, ks]) => `<div class="help-item"><span>${a}</span><span class="help-keys">${ks.map(k => `<span class="keycap">${esc(k)}</span>`).join('')}</span></div>`).join('') + '</div>' +
-      '<div class="hub-section" style="margin-top:18px">Natural Disaster Survival</div><p class="hub-note">Read the warning as soon as it appears. Flood &amp; Tsunami: get high, but not on the tallest tower. Acid Rain &amp; Meteor Shower: get under a roof on a low floor. Earthquake &amp; Fire: get outside, away from buildings. Blizzard: stand between walls near other players. Tornado: keep moving away from it. Deadly Virus: stay alone. Health is not restored between rounds, so reset in the lobby if you are low.</p>';
+      '<p class="hub-note" style="margin-top:16px">Read the warning as soon as it appears. Flood &amp; Tsunami: get high, but not on the tallest tower. Acid Rain &amp; Meteor Shower: get under a roof on a low floor. Earthquake &amp; Fire: get outside, away from buildings. Blizzard: stand between walls near other players. Tornado: keep moving away from it. Deadly Virus: stay alone. Health is not restored between rounds, so reset in the lobby if you are low.</p>';
   }
 
   renderSettings() {
@@ -463,6 +499,7 @@ export class UI {
       ['Shift Lock Switch', 'sel', 'shiftLockSwitch', [true, false], v => v ? 'On' : 'Off'],
       ['Camera Mode', 'sel', 'cameraMode', ['Classic', 'Follow'], v => v === 'Classic' ? 'Default (Classic)' : v],
       ['Movement Mode', 'sel', null, ['Default (Keyboard)'], v => v],
+      ['Output Device', 'sel', null, ['Default'], v => v],
       ['Camera Inverted', 'sel', 'inverted', [false, true], v => v ? 'On' : 'Off'],
       ['Camera Sensitivity', 'slider', 'sensitivity'],
       ['Volume', 'slider', 'volume'],
@@ -479,9 +516,9 @@ export class UI {
       if (type === 'sel') {
         const sel = document.createElement('div'); sel.className = 'selector';
         const cur = key ? s[key] : opts[0];
-        sel.innerHTML = '<button class="sel-arrow">‹</button><span class="sel-val"></span><button class="sel-arrow">›</button>';
+        sel.innerHTML = '<button class="chev">‹</button><span class="sel-val"></span><button class="chev">›</button>';
         sel.querySelector('.sel-val').textContent = fmt(cur);
-        const [l, r] = sel.querySelectorAll('.sel-arrow');
+        const [l, r] = sel.querySelectorAll('.chev');
         const step = (d) => {
           if (!key) return;
           const i = opts.indexOf(s[key]);
@@ -493,8 +530,7 @@ export class UI {
         row.appendChild(sel);
       } else {
         const disabled = key === 'quality' && s.graphicsMode === 'Automatic';
-        const sl = document.createElement('div'); sl.className = 'slider';
-        sl.style.opacity = disabled ? 0.4 : 1;
+        const sl = document.createElement('div'); sl.className = 'slider' + (disabled ? ' off' : '');
         sl.innerHTML = `<button class="pm">−</button><div class="steps">${Array.from({ length: 10 }, (_, i) => `<div class="st${i < s[key] ? ' on' : ''}" data-v="${i + 1}"></div>`).join('')}</div><button class="pm">+</button>`;
         const set = (v) => { if (disabled) return; s[key] = Math.max(1, Math.min(10, v)); this.applySettings(key); this.renderSettings(); };
         const [m, p] = sl.querySelectorAll('.pm');
@@ -533,27 +569,27 @@ export class UI {
 
   openPurchase(k) {
     const g = this.g, it = SHOP[k], m = this.el.purchase;
-    const owned = k === 'multi' ? false : k === 'hammer' ? !!g.player.items.hammer : !!g.player.items[k];
+    const owned = k === 'multi' ? false : !!g.player.items[k];
     const img = k === 'multi' ? '' : `<img src="${this.toolThumb(k)}" alt="">`;
-    const price = it.price ? `R$${it.price}` : 'Free';
-    m.innerHTML = `<div class="pp-card"><div class="pp-top"><button class="pp-x" aria-label="Close">×</button>${owned ? 'Item Owned' : 'Buy Item'}</div>
-      <div class="pp-mid"><div class="pp-img">${img}</div><div class="pp-desc">${owned
-        ? `You already own <b>${esc(it.name)}</b>.`
-        : `Would you like to buy the ${it.type} <b>${esc(it.name)}</b> from <b>Natural Disaster Survival</b> for <b>${price}</b>?`}</div></div>
-      <div class="pp-bot"><button class="pp-buy">${owned ? 'OK' : `Buy${it.price ? ' — Free here' : ''}`}</button>
-      <div class="pp-bal">${owned ? '' : it.price ? `Normally ${price}. Everything is free in this remake.` : 'Free item.'}</div></div></div>`;
-    m.classList.add('show');
-    m.querySelector('.pp-x').onclick = () => m.classList.remove('show');
-    m.querySelector('.pp-buy').onclick = () => {
-      if (owned) { m.classList.remove('show'); return; }
-      const ok = this.grant(k);
-      if (!ok) { m.classList.remove('show'); return; }
-      g.audio.chime();
-      m.querySelector('.pp-top').lastChild.textContent = 'Purchase Completed';
-      m.querySelector('.pp-desc').innerHTML = `You have successfully bought <b>${esc(it.name)}</b>.`;
-      const b = m.querySelector('.pp-buy'); b.textContent = 'OK'; b.onclick = () => m.classList.remove('show');
-      m.querySelector('.pp-bal').textContent = '';
+    const close = () => m.classList.remove('show');
+    const card = (title, msg, buttons, footer) => {
+      m.innerHTML = `<div class="buy"><div class="buy-title">${title}</div><div class="buy-img">${img}</div><div class="buy-msg">${msg}</div><div class="buy-btns">${buttons}</div>${footer ? `<div class="buy-bal">${footer}</div>` : ''}</div>`;
     };
+    if (owned) {
+      card('Buy Item', 'You already own this item. Your account has not been charged.', '<button class="buy-ok">OK</button>');
+      m.querySelector('.buy-ok').onclick = close;
+    } else {
+      card('Buy Item', `Would you like to buy "${esc(it.name)}"?`, '<button class="buy-cancel">Cancel</button><button class="buy-ok">Free</button>',
+        it.price ? `Normally R$${it.price} in the original game. Everything is free in this remake.` : '');
+      m.querySelector('.buy-cancel').onclick = close;
+      m.querySelector('.buy-ok').onclick = () => {
+        if (!this.grant(k)) { close(); return; }
+        g.audio.chime();
+        card('Purchase completed', `You have successfully bought "${esc(it.name)}".`, '<button class="buy-ok">OK</button>');
+        m.querySelector('.buy-ok').onclick = close;
+      };
+    }
+    m.classList.add('show');
   }
 
   grant(k) {

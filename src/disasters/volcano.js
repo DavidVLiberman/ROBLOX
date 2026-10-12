@@ -7,7 +7,7 @@ export default {
   name: 'Volcanic Eruption',
   warning: 'Volcanic Eruption! Get away from the volcano',
   icon: '🌋',
-  duration: 60,
+  duration: 105,
   sky: 'volcano',
   bot: 'away-volcano',
   preWarn(g, st) {

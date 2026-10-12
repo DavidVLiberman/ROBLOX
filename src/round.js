@@ -184,7 +184,7 @@ export class RoundManager {
       if (n >= 2) g.awardBadge('multi' + Math.min(7, n));
       for (const [m, d, id] of COMBO_BADGES) if (this.mapName === m && names.includes(d)) g.awardBadge(id);
     }
-    g.ui.showSurvivors(survivors.map(c => c.name));
+    g.ui.showSurvivors(survivors.map(c => ({ name: c.name, health: c.health, max: c.maxHealth })));
     botChat(g, 'survived');
     g.audio.chime();
     g.audio.stopLoops();

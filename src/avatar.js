@@ -99,9 +99,11 @@ export class Avatar {
     ctx.strokeText(this.tagName, 128, 26);
     ctx.fillStyle = '#fff'; ctx.fillText(this.tagName, 128, 26);
     if (healthFrac < 0.999) {
-      ctx.fillStyle = '#000'; ctx.fillRect(77, 39, 102, 10);
-      ctx.fillStyle = '#c4281c'; ctx.fillRect(78, 40, 100, 8);
-      ctx.fillStyle = '#4bd04b'; ctx.fillRect(78, 40, 100 * Math.max(0, healthFrac), 8);
+      // Humanoid health display: outlined bar in the Roblox health colour
+      const f = Math.max(0, healthFrac);
+      const c = f > 0.5 ? mixRGB([250, 235, 0], [27, 252, 107], (f - 0.5) * 2) : mixRGB([255, 28, 0], [250, 235, 0], f * 2);
+      ctx.strokeStyle = c; ctx.lineWidth = 2; ctx.strokeRect(79, 38, 98, 10);
+      ctx.fillStyle = c; ctx.fillRect(81, 40, 94 * f, 6);
     }
     this.tagTex.needsUpdate = true;
   }
@@ -119,25 +121,36 @@ export class Avatar {
   }
 
   // state: idle | walk | jump | fall | climb | sit | swim
+  // Mirrors the classic R6 "Animate" script: walking swings limbs with
+  // amplitude 1 at frequency 9, climbing adds a PI offset to the arms,
+  // jumping/falling raises both arms straight up, idle is a 0.1 sway at
+  // frequency 1, and the shoulder/hip motors are speed-limited (MaxVelocity).
   animate(dt, state, speed) {
-    this.phase += dt * (state === 'walk' ? 10 * Math.max(0.5, speed / 16) : state === 'swim' || state === 'climb' ? 8 : 2);
-    const s = Math.sin(this.phase);
-    const L = this.leftArm.rotation, R = this.rightArm.rotation, LL = this.leftLeg.rotation, RL = this.rightLeg.rotation;
-    let la = 0, ra = 0, ll = 0, rl = 0, tilt = 0;
-    switch (state) {
-      case 'walk': la = s * 0.9; ra = -s * 0.9; ll = -s * 0.9; rl = s * 0.9; break;
-      case 'jump': case 'fall': la = Math.PI; ra = Math.PI; ll = 0; rl = 0; break;
-      case 'climb': la = Math.PI * 0.85 + s * 0.4; ra = Math.PI * 0.85 - s * 0.4; ll = s * 0.5; rl = -s * 0.5; break;
-      case 'sit': la = Math.PI / 2; ra = Math.PI / 2; ll = Math.PI / 2; rl = Math.PI / 2; break;
-      case 'swim': la = Math.PI * 0.9 + s * 0.6; ra = Math.PI * 0.9 - s * 0.6; ll = s * 0.5; rl = -s * 0.5; tilt = 1.2; break;
-      default: la = s * 0.05; ra = -s * 0.05;
+    this.t = (this.t || 0) + dt;
+    let amp = 0.1, freq = 1, fudge = 0, maxVel = 0.15, la, ra, ll, rl, tilt = 0;
+    if (state === 'walk') { amp = 1; freq = 9; }
+    else if (state === 'climb') { amp = 1; freq = 9; fudge = Math.PI; maxVel = 0.5; }
+    else if (state === 'swim') { amp = 1; freq = 6; fudge = Math.PI * 0.8; maxVel = 0.5; tilt = 1.2; }
+    if (state === 'jump' || state === 'fall') {
+      maxVel = 0.5; la = Math.PI; ra = Math.PI; ll = 0; rl = 0;
+    } else if (state === 'sit') {
+      maxVel = 0.15; la = ra = ll = rl = Math.PI / 2;
+    } else {
+      const a = amp * Math.sin(this.t * freq);
+      ra = a + fudge; la = -a + fudge; rl = -a; ll = a;
+      if (state === 'climb' || state === 'swim') { la = a + fudge; ra = -a + fudge; }
     }
-    if (this.heldKind && state !== 'sit') ra = state === 'jump' || state === 'fall' || state === 'climb' ? ra : Math.PI / 2;
+    // tool held: right arm points forward ("toolnone"), balloon is held up high
+    if (this.heldKind && state !== 'sit' && state !== 'jump' && state !== 'fall' && state !== 'climb') ra = Math.PI / 2;
     if (this.heldKind === 'balloon') ra = Math.PI;
-    if (this.swing > 0) { ra = Math.PI / 2 + Math.sin(this.swing * Math.PI) * 1.2; this.swing -= dt * 3; }
-    const k = Math.min(1, dt * 14);
-    // R6 limbs swing about X (sign flipped so positive = forward)
-    L.x += (-la - L.x) * k; R.x += (-ra - R.x) * k; LL.x += (-ll - LL.x) * k; RL.x += (-rl - RL.x) * k;
+    if (this.swing > 0) { ra = Math.PI / 2 + Math.sin(this.swing * Math.PI) * 1.2; this.swing -= dt * 3; maxVel = 1; }
+    // Motor6D MaxVelocity is per 1/30 s step in the legacy engine
+    const step = maxVel * 30 * dt;
+    const mv = (cur, target) => cur + Math.max(-step, Math.min(step, target - cur));
+    const L = this.leftArm.rotation, R = this.rightArm.rotation, LL = this.leftLeg.rotation, RL = this.rightLeg.rotation;
+    // positive = forward swing; limbs hang along -y so forward is a negative X rotation
+    L.x = mv(L.x, -la); R.x = mv(R.x, -ra); LL.x = mv(LL.x, -ll); RL.x = mv(RL.x, -rl);
+    const k = Math.min(1, dt * 10);
     this.body.rotation.x += (tilt - this.body.rotation.x) * k;
     this.body.position.y = state === 'sit' ? -1.6 : (tilt ? 1.5 : 0);
   }
@@ -162,6 +175,8 @@ export class Avatar {
     return out;
   }
 }
+
+function mixRGB(a, b, t) { return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(',')})`; }
 
 // Tool models (also used for the purchase prompt thumbnails).
 export function makeToolModel(kind) {

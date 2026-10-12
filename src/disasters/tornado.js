@@ -9,7 +9,7 @@ export default {
   name: 'Tornado',
   warning: "Tornado! Stay clear of it's path",
   icon: '🌪️',
-  duration: 60,
+  duration: 90,
   sky: 'dark',
   bot: 'away-tornado',
   preWarn(g) {

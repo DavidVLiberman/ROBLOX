@@ -8,7 +8,7 @@ export default {
   name: 'Avalanche',
   warning: 'Avalanche! Avoid the path of the snow!',
   icon: '🏔️',
-  duration: 60,
+  duration: 90,
   sky: 'snowy',
   bot: 'away-mountain',
   preWarn(g, st) {
