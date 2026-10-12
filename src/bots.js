@@ -39,9 +39,15 @@ export class BotBrain {
 
   setPath(points) { this.path = points.map(p => p.clone()); this.idx = 0; this.stuckT = 0; }
 
+  // wander around the Lobby Tower, sometimes taking the blue stairs to the roof
   lobbyWander() {
-    const { x, z, top } = TOWER;
-    this.setPath([V(x + (rand() - .5) * 36, top + 2, z + (rand() - .5) * 30)]);
+    const isl = this.g.island, c = this.c;
+    const target = isl.lobbySpot(rand);
+    const onRoof = c.pos.y > TOWER.roof - 3, toRoof = target.y > TOWER.roof - 3;
+    const st = pick(isl.stairs);
+    if (onRoof && !toRoof) this.setPath([st.landing, st.top, st.bottom, target]);
+    else if (!onRoof && toRoof) this.setPath([st.bottom, st.top, st.landing, target]);
+    else this.setPath([target]);
     this.wait = 1 + rand() * 4;
   }
 

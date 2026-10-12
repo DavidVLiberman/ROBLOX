@@ -141,9 +141,13 @@ export class Character {
 
   // env: environmental damage (acid, cold, virus, water) does not hurt
   // spectators who walk back onto the island.
+  // Players waiting in the Lobby Tower are safe from disasters.
+  safeInLobby() { return !this.inRound && this.game.island?.inTower(this.pos); }
+
   damage(amount, cause = 'unknown', env = false) {
     if (!this.alive || amount <= 0 || this.remote) return;
     if (env && !this.inRound) return;
+    if (this.safeInLobby()) return;
     if (this.game.godMode && this.isPlayer) return;
     this.health = Math.max(0, this.health - amount);
     if (this.inRound) this.minHealthThisRound = Math.min(this.minHealthThisRound, this.health);
@@ -165,6 +169,7 @@ export class Character {
 
   die(cause = 'unknown') {
     if (!this.alive) return;
+    if (!this.remote && cause !== 'reset' && cause !== 'fell' && cause !== 'unknown' && this.safeInLobby()) return;
     this.alive = false;
     this.health = 0;
     const wasInRound = this.inRound;

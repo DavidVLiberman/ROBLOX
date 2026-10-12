@@ -340,3 +340,17 @@ body.hub-open #chat, body.hub-open #playerlist, body.hub-open #backpack, body.hu
 .bstack.far .bubble { display: none; }
 .bstack.far .bubble.mini { display: block; }
 #chat-log .msg.whisper .nm { font-style: italic; }
+
+/* Spectate (from the Lobby Tower): a pill above the health bar */
+#spectate { position: fixed; left: 50%; bottom: 112px; transform: translateX(-50%); z-index: 24; display: none; flex-direction: column; align-items: center; gap: 8px; font-family: var(--nds-font); }
+#spectate.show { display: flex; }
+#spec-toggle { height: 34px; padding: 0 18px; border-radius: 17px; border: 0; background: rgba(0, 0, 0, 0.55); color: #fff; font: 700 15px var(--nds-font); cursor: pointer; }
+#spec-toggle:hover { background: rgba(30, 30, 34, 0.7); }
+#spec-bar { display: none; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.55); border-radius: 22px; padding: 4px 6px; }
+#spectate.on #spec-bar { display: flex; }
+#spec-bar button { width: 36px; height: 36px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, 0.14); color: #fff; font: 700 26px/1 var(--nds-font); cursor: pointer; }
+#spec-bar button:hover { background: rgba(255, 255, 255, 0.26); }
+#spec-info { display: flex; flex-direction: column; align-items: center; min-width: 150px; color: #fff; }
+#spec-info span { font-size: 11px; opacity: .75; text-transform: uppercase; letter-spacing: .06em; }
+#spec-info b { font-size: 16px; }
+@media (max-width: 700px), (max-height: 500px) { #spectate { bottom: 96px; } #spec-info { min-width: 110px; } }

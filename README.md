@@ -1,6 +1,6 @@
 # Natural Disaster Survival — web remake
 
-A browser recreation of the classic round-based Roblox survival game, playable as a static website.
+A browser recreation of the classic round-based Roblox survival game, playable as a static website. Made by David.
 You play as the classic **Noob** (yellow head & arms, blue torso, green legs, Smile face), get dropped
 onto a random map with other players, read the warning, and try to survive the disaster.
 
@@ -49,7 +49,8 @@ Enable it once under **Settings → Pages → Build and deployment → Source: G
 | Spec item | Implementation |
 |---|---|
 | Round loop | Intermission (15 s, map vote for Compass owners) → map announce (5 s) → teleport → free roam (20 s, hints/volcano/mountain 15 s early) → disaster (45–70 s) → survivors (6 s) → back to lobby. No map repeats from recent history. |
-| World | Grass island with brown rim (tornado never enters it), endless ocean, tall safety tower lobby with switch-back ramps down to the island, scoreboard, Weather Machine. Living players take damage hiding in the tower mid-round. |
+| World | Grass island with brown rim (tornado never enters it) and endless ocean. The **Lobby Tower** stands at the island's edge looking straight over the map, like the real one: a two-storey round building on a dark grey pole. You spawn on the first floor (facing the map, behind a glass railing), two blue staircases lead to the roof with the Red Apple and Yellow Compass signs, the Survivalist Leaderboard, the Green Balloon sign and the Weather Machine. The glowing circle between the staircases leads to a hidden Secret Lab. Jump off the tower to get down to the island. Players waiting in the lobby are safe from disasters; living players who hide there mid-round take damage. |
+| Lobby & dying | When you die you respawn in the Lobby Tower after 5 seconds, looking out over the map. From the lobby you can press **Spectate** to follow anyone still in the round (◀ ▶ to switch). |
 | Avatar | R6-style Noob with the classic Smile face; walk 16, jump power 50, 100 HP, Roblox gravity 196.2. Walk/jump/fall/climb/swim/sit animations and the R6 chat emotes (/e dance, dance2, dance3, wave, point, cheer, laugh). Falls apart into six pieces on death. |
 | Climbing | Truss climbing like a Roblox Humanoid: walk into a truss to grab it, forward climbs at 11.2 studs/s (70% of WalkSpeed), back climbs down, no input hangs on, sideways shuffles, Space kicks off backwards, and you pull yourself up over the top. |
 | Movement | Fixed 60 Hz physics with smoothed (interpolated) rendering, 1.6-stud auto step-up, a short jump grace period after walking off a ledge, ground snapping on slopes and stairs, and players gently pushing apart instead of getting stuck on each other. Trusses climb at 12 studs/s. |

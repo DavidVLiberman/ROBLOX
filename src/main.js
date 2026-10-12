@@ -92,8 +92,13 @@ class Game {
       label: 'Add Disaster',
       action: () => this.ui.openPurchase('multi'),
     }];
+    // the item signs on the lobby roof open the purchase prompt, like clicking them in NDS
+    for (const sg of this.island.signs) {
+      this.interactables.push({ pos: sg.pos, radius: 7, height: 7, object: sg.title.toLowerCase().replace(/\b\w/g, m => m.toUpperCase()), label: 'Get', action: () => this.ui.openPurchase(sg.kind) });
+    }
+    this.spectating = null;
 
-    this.player.spawn(this.island.randomSpawn(), Math.PI);
+    this.player.spawn(this.island.randomSpawn(), 0);
     this.camController.target.copy(this.player.pos).add(new THREE.Vector3(0, 4.5, 0));
     this.setupTouch();
 
@@ -215,7 +220,7 @@ class Game {
     c.brain = new BotBrain(this, c);
     this.chars.push(c);
     this.bots.push(c);
-    c.spawn(this.island.randomSpawn(), Math.PI);
+    c.spawn(this.island.randomSpawn(), 0);
     return c;
   }
 
@@ -326,8 +331,9 @@ class Game {
     this.shakeUntil = Math.max(this.shakeUntil || 0, this.time + seconds);
   }
 
+  // after dying you come back in the Lobby Tower, facing the map
   respawn(c) {
-    c.spawn(this.island.randomSpawn(), Math.PI);
+    c.spawn(this.island.randomSpawn(), 0);
     if (c.brain) c.brain.mode = '';
   }
 
@@ -346,8 +352,20 @@ class Game {
     if (c.isPlayer) {
       c.gravityScale = 1;
       this.camController.dist = Math.max(this.camController.dist, 8);
+      this.camController.yaw = 0;          // look out over the map
+      this.camController.pitch = -0.25;
     }
   }
+
+  // ---------- spectating from the lobby ----------
+  spectateTargets() { return this.chars.filter(c => c !== this.player && c.alive && c.inRound); }
+  spectate(dir) {
+    const list = this.spectateTargets();
+    if (!list.length) { this.spectating = null; return; }
+    const i = list.indexOf(this.spectating);
+    this.spectating = list[i < 0 ? 0 : (i + dir + list.length) % list.length];
+  }
+  stopSpectating() { this.spectating = null; }
 
   awardBadge(id) {
     if (this.data.award(id)) { this.ui.badge(id); this.audio.badge(); }
@@ -391,7 +409,7 @@ class Game {
   // ---------- player control ----------
   controlPlayer(dt) {
     const p = this.player, input = this.input, cam = this.camController;
-    if (!this.started || this.ui.blocking()) { p.move.set(0, 0, 0); p.jump = false; this.ui.prompt(null); return; }
+    if (!this.started || this.ui.blocking() || this.spectating) { p.move.set(0, 0, 0); p.jump = false; this.ui.prompt(null); return; }
     const { f, r } = input.moveAxes();
     const { fwd, right } = cam.basis();
     const m = fwd.multiplyScalar(f).add(right.multiplyScalar(r));
@@ -537,8 +555,15 @@ class Game {
     const alpha = Math.min(1, this.acc / STEP);
     for (const c of this.chars) c.render(dt, alpha);
     const p = this.player;
-    const rp = p.renderPos(alpha);
-    const subj = p.alive ? new THREE.Vector3(rp.x, rp.y + 4.5, rp.z) : null;
+    // secret lab circles
+    if (p.alive && this.started) this.island.updateLabPortals(p, dt);
+    // spectating: follow someone who is still in the round
+    if (this.spectating && (p.inRound || !this.spectating.alive || !this.spectating.inRound || !this.chars.includes(this.spectating))) {
+      if (p.inRound) this.spectating = null; else this.spectate(1);
+    }
+    const sc = this.spectating || p;
+    const rp = sc.renderPos(alpha);
+    const subj = sc.alive ? new THREE.Vector3(rp.x, rp.y + 4.5, rp.z) : null;
     this.camController.update(dt, this.input, subj);
     p.avatar.setVisible(p.alive && !this.camController.firstPerson);
     this.effects.update(dt);

@@ -76,6 +76,7 @@ export class UI {
     this.bindBackpack();
     this.bindHub();
     this.bindShop();
+    this.bindSpectate();
     this.applySettings();
   }
 
@@ -481,6 +482,25 @@ export class UI {
     this._pp.style.top = `${(-_v.y * 0.5 + 0.5) * innerHeight}px`;
   }
 
+  // ============================== spectate ==============================
+  // From the Lobby Tower you can follow anyone still in the round.
+  bindSpectate() {
+    const g = this.g;
+    $('spec-toggle').onclick = () => { if (g.spectating) g.stopSpectating(); else g.spectate(0); g.audio.click(); };
+    $('spec-prev').onclick = () => { g.spectate(-1); g.audio.click(); };
+    $('spec-next').onclick = () => { g.spectate(1); g.audio.click(); };
+  }
+
+  updateSpectate() {
+    const g = this.g, p = g.player;
+    const can = g.started && !p.inRound && (g.round.phase === 'roam' || g.round.phase === 'disaster') && g.spectateTargets().length > 0;
+    const el = $('spectate');
+    el.classList.toggle('show', can || !!g.spectating);
+    el.classList.toggle('on', !!g.spectating);
+    $('spec-toggle').textContent = g.spectating ? 'Stop Spectating' : 'Spectate';
+    if (g.spectating && this._specName !== g.spectating.name) { this._specName = g.spectating.name; $('spec-name').textContent = g.spectating.name; }
+  }
+
   // ============================== frame update ==============================
   update(dt) {
     const g = this.g, p = g.player;
@@ -495,6 +515,7 @@ export class UI {
     this.lbTimer -= dt;
     if (this.lbTimer <= 0) { this.lbTimer = 0.5; this.playerList(); }
     this.updateBubbles();
+    this.updateSpectate();
     this.el.mouselock.classList.toggle('on', g.input.shiftLock || (g.camController.firstPerson && p.alive));
     // chat fades out when idle
     const idle = performance.now() - this.chatActiveAt > 12000 && document.activeElement !== this.el.chatInput;
@@ -581,7 +602,7 @@ export class UI {
   }
 
   renderHome() {
-    $('hub-home').innerHTML = `<div class="home-info"><h2>Natural Disaster Survival</h2><div class="hi-by">By Stickmasterluke · browser fan remake</div>
+    $('hub-home').innerHTML = `<div class="home-info"><h2>Natural Disaster Survival</h2><div class="hi-by">By David · browser fan remake</div>
       <p>Survive a series of natural disasters! The map and disaster are picked at random each round. Read the warning, pick your spot, and stay alive until the timer runs out.</p>
       <p>Round ${this.g.round.roundNo} · ${this.g.chars.length} people in this server · Your survivals: ${this.g.player.survivals} · Best streak: ${this.g.data.d.bestStreak || 0}</p></div>`;
   }
