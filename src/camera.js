@@ -15,12 +15,22 @@ export class CameraController {
     this.shake = 0;
     this.firstPerson = false;
     this.spectate = null;
+    this.sensitivity = 1;
+    this.inverted = false;
+    this.follow = false;
   }
 
   update(dt, input, subject) {
-    const sens = 0.0045;
+    const sens = 0.0045 * this.sensitivity;
     this.yaw -= input.mouseDX * sens;
-    this.pitch = clamp(this.pitch - input.mouseDY * sens, -1.45, 1.35);
+    this.pitch = clamp(this.pitch - input.mouseDY * sens * (this.inverted ? -1 : 1), -1.45, 1.35);
+    // "Follow" camera mode swings around behind the character while walking
+    const p = this.game.player;
+    if (this.follow && p && p.alive && !input.dragging && !input.shiftLock && p.hSpeed > 2) {
+      let d = p.yaw - this.yaw;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      this.yaw += d * Math.min(1, dt * 1.5);
+    }
     if (input.down('arrowleft')) this.yaw += dt * 2.6;
     if (input.down('arrowright')) this.yaw -= dt * 2.6;
     if (input.down('i')) this.dist *= Math.pow(0.2, dt);

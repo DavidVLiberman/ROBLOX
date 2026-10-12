@@ -39,14 +39,15 @@ Enable it once under **Settings → Pages → Build and deployment → Source: G
 | Items | Green Balloon, Red Apple, Yellow Compass, Blue Hammer (12/day) — all free here. |
 | Progression | Survivals + streak saved in `localStorage`; all badges from the spec (milestones, streaks, Close Call, Chance, map/disaster combos, Rocket Escape, Multi-Disaster 2–7). |
 | Players | Simulated server players (bots) that wander the lobby, explore, and then pick a spot depending on the warning (high ground, indoors, open ground, away from the hazard). |
-| UI | Status banner, warning popup, health bar, survivors list, leaderboard, shop buttons, hotbar, map vote, badge toasts, menu with Reset Character. Mobile thumbstick + jump button. |
+| Roblox interface | Recreated in HTML/CSS (no copied Roblox image files): top bar (menu, chat, player list/backpack on mobile), chat window + bubble chat with Roblox name colours, player list with a Survivals column (Tab), backpack hotbar + inventory with Search (` key) where tools show their names like icon-less Roblox tools, ProximityPrompts, Roblox-style notifications ("Badge Awarded"), the "Buy Item" purchase prompt, and the Esc menu with People / Settings / Report / Help tabs plus Reset Character [R], Leave [L], Resume [Esc]. Mobile thumbstick + jump button. |
+| Game GUI | Status bar, disaster warning, health bar, survivors list, Compass map vote, item buttons. |
 | Sound | All synthesized with WebAudio (rain, wind, thunder, rumble, water roar, explosions, coughs, chime). |
 
 ## Controls
 
 WASD / ↑↓ move · Space jump · right- (or left-) drag to turn the camera · scroll or I/O to zoom
-(zoom all the way in for first person) · ← → turn · Shift toggles shift-lock · 1–3 equip tools,
-click to use · E interact · Esc menu (R to reset).
+(zoom all the way in for first person) · ← → turn · Shift toggles shift-lock · 1–0 equip tools,
+click to use · ` backpack · / chat · Tab player list · E interact · Esc menu (then R + Enter to reset).
 
 ## URL options (handy for testing)
 

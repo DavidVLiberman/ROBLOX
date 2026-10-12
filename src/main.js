@@ -6,7 +6,7 @@ import { Input } from './input.js';
 import { CameraController } from './camera.js';
 import { Island } from './island.js';
 import { Character } from './character.js';
-import { BotBrain, BOT_NAMES, botColors } from './bots.js';
+import { BotBrain, BOT_NAMES, botColors, botChat } from './bots.js';
 import { RoundManager } from './round.js';
 import { UI } from './ui.js';
 import { SaveData } from './data.js';
@@ -55,12 +55,13 @@ class Game {
     this.camController = new CameraController(this.camera, this);
     this.effects = new Effects(this);
     this.audio = new Audio(this);
-    this.audio.muted = !!this.data.d.settings.muted;
     this.island = new Island(this);
     this.waterLevel = OCEAN_LEVEL; this.waterTarget = OCEAN_LEVEL; this.waterRate = 2;
     this.seats = []; this.trusses = []; this.vehicles = []; this.temp = [];
     this.map = null; this.hazardPos = null;
     this.chars = [];
+    this.chatQueue = [];
+    this.nextIdleChat = 20;
 
     const name = (this.data.d.name || '').trim() || 'Noob' + Math.floor(1000 + Math.random() * 9000);
     document.getElementById('name-input').value = name;
@@ -86,13 +87,12 @@ class Game {
     this.ui = new UI(this);
     this.island.drawBoard(0, [...this.chars].sort((a, b) => b.survivals - a.survivals), []);
     this.island.drawWeatherMachine(0);
+    // the Weather Machine sells Multi-Disaster through the standard purchase prompt
     this.interactables = [{
-      pos: this.island.weatherMachine, radius: 9,
-      label: () => `Weather Machine — add a disaster (${this.round.multi}/7)`,
-      action: () => {
-        if (this.round.addMulti()) { this.ui.toast(`Multi-Disaster: ${this.round.multi} extra disaster${this.round.multi > 1 ? 's' : ''} next round!`); this.audio.chime(); }
-        else this.ui.toast('The Weather Machine is maxed out (7)!');
-      },
+      pos: this.island.weatherMachine, radius: 9, height: 9,
+      object: () => `Weather Machine (${this.round.multi}/7)`,
+      label: 'Add Disaster',
+      action: () => this.ui.openPurchase('multi'),
     }];
 
     for (const c of this.chars) c.spawn(this.island.randomSpawn(), Math.PI);
@@ -100,18 +100,28 @@ class Game {
     this.setupTouch();
 
     this.started = false;
+    const loading = document.getElementById('loading');
     const go = () => {
       const nm = document.getElementById('name-input').value.trim().replace(/[^\w ]/g, '').slice(0, 20);
       if (nm) { this.player.name = nm; this.data.d.name = nm; this.data.save(); }
       document.getElementById('start').classList.add('hide');
       this.audio.start();
-      this.started = true;
-      this.awardBadge('welcome');
+      this.ui.applySettings();
+      // Roblox-style loading screen while "joining" the server
+      loading.classList.remove('hide');
+      setTimeout(() => {
+        loading.classList.add('hide');
+        this.started = true;
+        this.ui.system(`Welcome to Natural Disaster Survival! ${this.chars.length} players are on this server.`);
+        this.awardBadge('welcome');
+      }, this.opts.autostart ? 0 : 1600);
     };
     document.getElementById('play-btn').onclick = go;
-    document.getElementById('name-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+    document.getElementById('name-input').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') go(); });
+    this.input.blocked = () => this.ui.blocking();
+    this.thumbnail();
     if (this.opts.autostart) go();
-    document.getElementById('loading').classList.add('hide');
+    else loading.classList.add('hide');
 
     this.last = performance.now();
     this.acc = 0;
@@ -119,8 +129,25 @@ class Game {
     requestAnimationFrame(() => this.frame());
   }
 
+  // the experience page thumbnail is a real render of the island
+  thumbnail() {
+    try {
+      const cam = new THREE.PerspectiveCamera(55, 16 / 9, 0.5, 5000);
+      cam.position.set(150, 95, 170);
+      cam.lookAt(0, 10, -60);
+      this.effects.update(0);
+      this.renderer.setSize(960, 540, false);
+      this.renderer.render(this.scene, cam);
+      const url = this.renderer.domElement.toDataURL('image/jpeg', 0.85);
+      this.renderer.setSize(innerWidth, innerHeight);
+      const t = document.querySelector('.xp-thumb');
+      t.style.background = `url(${url}) center / cover`;
+      t.querySelector('.xp-thumb-title').style.display = 'none';
+    } catch { /* keep the fallback */ }
+  }
+
   setupTouch() {
-    const joy = document.getElementById('joy'), knob = document.getElementById('joy-knob');
+    const joy = document.getElementById('thumb'), knob = document.getElementById('thumb-knob');
     this.input.showJoy = (x, y, dx, dy) => {
       if (x === null) { joy.style.display = 'none'; return; }
       joy.style.display = 'block';
@@ -128,11 +155,10 @@ class Game {
       knob.style.transform = `translate(${dx}px, ${dy}px)`;
     };
     const jb = document.getElementById('jump-btn');
-    const set = (v) => (e) => { e.preventDefault(); this.input.touch.jump = v; this.input.isTouch = true; };
+    const set = (v) => (e) => { e.preventDefault(); this.input.touch.jump = v; this.input.isTouch = true; jb.classList.toggle('down', v); };
     jb.addEventListener('touchstart', set(true), { passive: false });
     jb.addEventListener('touchend', set(false), { passive: false });
     jb.addEventListener('touchcancel', set(false), { passive: false });
-    document.getElementById('prompt').addEventListener('click', () => this.interactNearest(true));
     if ('ontouchstart' in window) document.body.classList.add('touch');
   }
 
@@ -178,6 +204,7 @@ class Game {
   }
 
   onDeath(c, cause, wasInRound) {
+    if (!c.isPlayer && wasInRound) botChat(this, 'died', c);
     if (wasInRound) {
       c.streak = 0;
       if (c.isPlayer) { this.data.d.streak = 0; this.data.save(); }
@@ -221,13 +248,6 @@ class Game {
       const d = it.pos.distanceTo(p.pos);
       if (d < it.radius && d < bd) { bd = d; best = it; }
     }
-    // vehicle seats
-    if (!best) for (const v of this.vehicles) {
-      if (v.broken || v.seat.occupant || !v.drivable) continue;
-      const t = v.seat.body.translation();
-      const d = Math.hypot(t.x - p.pos.x, t.z - p.pos.z);
-      if (d < 7 && d < bd && Math.abs(t.y - p.pos.y) < 6) { bd = d; best = { label: 'Drive', action: () => p.sit(v.seat), pos: null }; }
-    }
     if (fire && best) best.action(p);
     return best;
   }
@@ -235,7 +255,7 @@ class Game {
   // ---------- player control ----------
   controlPlayer(dt) {
     const p = this.player, input = this.input, cam = this.camController;
-    if (!this.started || this.ui.el.menu.classList.contains('show')) { p.move.set(0, 0, 0); p.jump = false; return; }
+    if (!this.started || this.ui.blocking()) { p.move.set(0, 0, 0); p.jump = false; this.ui.prompt(null); return; }
     const { f, r } = input.moveAxes();
     const { fwd, right } = cam.basis();
     const m = fwd.multiplyScalar(f).add(right.multiplyScalar(r));
@@ -245,7 +265,7 @@ class Game {
     p.jump = input.jumpHeld();
     p.faceYaw = (input.shiftLock || cam.firstPerson) && !p.seat ? cam.yaw : null;
 
-    for (let i = 0; i < 3; i++) if (input.wasPressed(String(i + 1))) this.equipSlot(i);
+    for (let i = 0; i < 10; i++) if (input.wasPressed(String((i + 1) % 10))) this.equipSlot(i);
     if (input.wasPressed('e')) this.interactNearest(true);
     this.ui.prompt(this.interactNearest(false));
 
@@ -253,7 +273,7 @@ class Game {
     const balloon = p.equipped === 'balloon' && !p.balloonPopped;
     p.gravityScale = balloon ? 0.3 : 1;
     if (balloon && p.pos.y > 170) {
-      p.balloonPopped = true; p.equip(null); this.audio.pop(p.pos); this.ui.toast('Your balloon popped!');
+      p.balloonPopped = true; p.equip(null); this.audio.pop(p.pos);
     }
     if (input.clicked && p.alive) {
       if (p.equipped === 'apple') {
@@ -262,7 +282,7 @@ class Game {
           p.heal(p.maxHealth * 0.15);
           p.avatar.swing = 1;
           this.audio.eat();
-        } else this.ui.toast(`Apple cooldown: ${Math.ceil(p.appleCd - this.time)}s`, 1200);
+        }
       } else if (p.equipped === 'hammer') {
         if ((p.hammerCd || 0) < this.time) {
           const ndc = new THREE.Vector2(input.clickX / innerWidth * 2 - 1, -(input.clickY / innerHeight) * 2 + 1);
@@ -349,6 +369,13 @@ class Game {
       else if (c.swimming) c.damage(1.5 * dt, 'water', true);
     }
     if (this.shakeUntil > this.time && this.player.alive && this.island.onIsland(this.player.pos)) this.camController.shake = Math.max(this.camController.shake, this.shakeAmt);
+
+    // queued bot chat
+    for (let i = this.chatQueue.length - 1; i >= 0; i--) {
+      const q = this.chatQueue[i];
+      if (this.time >= q.at) { this.chatQueue.splice(i, 1); if (this.started) this.ui.say(q.char, q.text); }
+    }
+    if (this.started && this.time > this.nextIdleChat) { this.nextIdleChat = this.time + 25 + Math.random() * 35; if (this.round.phase === 'intermission') botChat(this, 'idle'); }
 
     for (const c of this.chars) c.render(dt);
     const p = this.player;

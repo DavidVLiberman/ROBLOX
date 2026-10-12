@@ -162,3 +162,34 @@ export class BotBrain {
     }
   }
 }
+
+// ---------------- bot chatter (shows in the chat window and as bubbles) ----------------
+const LINES = {
+  idle: ['what disaster next', 'anyone wanna team?', 'pls no tsunami', 'i love this game', 'hi guys', 'someone buy multi disaster lol', 'lag', 'brb', 'how do u get the balloon', 'flood is so easy', 'i hate fire', 'gg last round'],
+  teleport: ['this map again', 'where do i go', 'i love this map', 'lets go', 'ez', 'i call the roof', 'hide spot is mine'],
+  high: ['GET HIGH', 'go to the roof!!', 'climb climb climb', 'up up up'],
+  'high-ish': ['GET HIGH', 'not the tallest one!', 'roof!!'],
+  indoor: ['GO INSIDE', 'hide inside!!', 'get under something'],
+  'indoor-low': ['GO INSIDE', 'bottom floor!!', 'stay under the roof'],
+  open: ['GET OUT OF THE BUILDING', 'outside!!', 'jump jump jump'],
+  'away-tornado': ['RUN', 'its coming this way', 'nooo the tornado'],
+  'away-volcano': ['RUN FROM THE VOLCANO', 'lava!!'],
+  'away-mountain': ['AVALANCHE RUN', 'snowballs!!'],
+  'away-fire': ['FIRE', 'dont touch the fire', 'get away from the building'],
+  upwind: ['sandstorm noo', 'hide behind something'],
+  'avoid-crowd': ['dont come near me', 'stay away from me lol', 'who has the virus'],
+  died: ['oof', 'noooo', 'bruh', 'lag', 'that was unfair', 'rip', 'NOOOO', 'i was so close'],
+  survived: ['gg', 'ez', 'yay', 'i survived!!', 'gg everyone', 'lets goooo', 'ez clap'],
+};
+
+export function botChat(game, event, who = null) {
+  const bots = game.chars.filter(c => !c.isPlayer);
+  if (!bots.length) return;
+  const lines = LINES[event];
+  if (!lines) return;
+  const queue = (c, delay) => game.chatQueue.push({ at: game.time + delay, char: c, text: pick(lines) });
+  if (who) { if (rand() < 0.45) queue(who, 0.8 + rand() * 1.5); return; }
+  const pool = event === 'survived' ? bots.filter(c => c.alive && c.inRound) : bots.filter(c => c.alive);
+  const n = event === 'idle' ? 1 : Math.min(pool.length, 1 + Math.floor(rand() * 2.5));
+  for (let i = 0; i < n; i++) if (pool.length) queue(pick(pool), 0.6 + rand() * 3);
+}

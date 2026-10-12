@@ -6,7 +6,7 @@
 <title>Natural Disaster Survival</title>
 <meta name="description" content="A browser remake of the classic round-based disaster survival game. Survive floods, tsunamis, tornadoes and more as a classic noob.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Source+Sans+3:wght@400;600;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "rapier": "./vendor/rapier.es.js" } }
@@ -15,71 +15,144 @@
 <body>
 <canvas id="game"></canvas>
 
-<!-- HUD -->
-<button id="menu-btn" title="Menu (Esc)"><span></span></button>
+<!-- ================= Game GUI (the experience's own ScreenGuis) ================= -->
 <div id="status"><span id="status-text">Intermission</span><span id="status-time"></span></div>
-<div id="toasts"></div>
+<div id="messages"></div>
 <div id="warnings"></div>
-
-<table id="lb"><thead><tr><th class="nm">Players</th><th>Survivals</th></tr></thead><tbody id="lb-body"></tbody></table>
-
-<div id="shop">
-  <button data-shop="balloon"><span>🎈</span><small>Balloon</small></button>
-  <button data-shop="apple"><span>🍎</span><small>Apple</small></button>
-  <button data-shop="compass"><span>🧭</span><small>Compass</small></button>
-  <button data-shop="hammer" class="free"><span>🔨</span><small>Free Hammer</small></button>
-  <button data-shop="multi"><span>🌩️</span><small>Multi</small></button>
+<div id="nds-buttons">
+  <button data-shop="balloon">Balloon</button>
+  <button data-shop="apple">Apple</button>
+  <button data-shop="compass">Compass</button>
+  <button data-shop="hammer" class="free">Free Hammer</button>
+  <button data-shop="multi">Multi-Disaster</button>
 </div>
-
-<div id="hotbar"></div>
-<div id="health"><div id="health-fill"></div><div id="health-text">100 / 100</div></div>
-<div id="prompt"></div>
-
+<div id="health"><div id="health-fill"></div><div id="health-text">100</div></div>
 <div id="survivors"><div class="s-head">Survivors</div><ul id="survivor-list"></ul></div>
 <div id="vote"></div>
-<div id="badges"></div>
-<div id="dead">Respawning…</div>
-
 <div id="hurt"></div><div id="cold"></div><div id="sick"></div>
 
-<div id="joy"><div id="joy-knob"></div></div>
-<button id="jump-btn">⤒</button>
+<!-- ================= Roblox CoreGui ================= -->
+<div id="topbar">
+  <button class="tb-btn" id="tb-menu" aria-label="Roblox Menu">
+    <svg viewBox="0 0 24 24" width="22" height="22"><path fill="#fff" fill-rule="evenodd" d="M6.1 2.3 21.7 6.1 17.9 21.7 2.3 17.9ZM10.7 9.9 14.1 10.7 13.3 14.1 9.9 13.3Z"/></svg>
+  </button>
+  <button class="tb-btn" id="tb-chat" aria-label="Chat">
+    <svg viewBox="0 0 24 24" width="22" height="22"><path fill="#fff" d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8.5L7 20.6V17H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v9h5v1.4L11 15h9V6Z"/></svg>
+  </button>
+  <button class="tb-btn" id="tb-players" aria-label="Player List">
+    <svg viewBox="0 0 24 24" width="22" height="22"><path fill="#fff" d="M4 5h16v2H4Zm0 6h16v2H4Zm0 6h16v2H4Z"/></svg>
+  </button>
+  <button class="tb-btn" id="tb-backpack" aria-label="Backpack">
+    <svg viewBox="0 0 24 24" width="22" height="22"><path fill="#fff" d="M9 3h6a2 2 0 0 1 2 2v1h1a3 3 0 0 1 3 3v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a3 3 0 0 1 3-3h1V5a2 2 0 0 1 2-2Zm0 3h6V5H9Zm-3 2a1 1 0 0 0-1 1v10h14V9a1 1 0 0 0-1-1Zm2 4h8v4H8Z"/></svg>
+  </button>
+</div>
 
-<div id="shop-modal"></div>
+<div id="chat">
+  <div id="chat-window"><div id="chat-log"></div></div>
+  <div id="chat-bar">
+    <input id="chat-input" maxlength="200" autocomplete="off" spellcheck="false" placeholder="To chat click here or press / key">
+    <button id="chat-send" aria-label="Send"><svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M3 20.5 21.5 12 3 3.5l.01 6.6L16 12 3.01 13.9Z"/></svg></button>
+  </div>
+</div>
 
-<div id="menu">
-  <div class="m-card">
-    <div class="m-title">Menu</div>
-    <button id="m-resume">Resume Game</button>
-    <button id="m-reset">Reset Character <kbd>R</kbd></button>
-    <button id="m-badges">Badges</button>
-    <button id="m-help">Controls &amp; Tips</button>
-    <button id="m-mute">Sound: On</button>
-    <button id="m-gfx">Graphics: High</button>
-    <button id="m-skip">Skip Intermission</button>
-    <div id="badge-list"></div>
-    <div id="help">
-      <p><b>Move</b> WASD / ↑↓ · <b>Jump</b> Space · <b>Camera</b> drag with right (or left) mouse · <b>Zoom</b> scroll or I/O · <b>Turn</b> ← → · <b>Shift-lock</b> Shift</p>
-      <p><b>Tools</b> 1–3 to equip, click to use · <b>Interact</b> E (Weather Machine, cars, rocket button)</p>
-      <p><b>Tips:</b> read the warning fast. Flood &amp; Tsunami → get high (but not the tallest tower). Acid Rain &amp; Meteors → get under a roof on a low floor. Earthquake &amp; Fire → get outside, away from buildings, keep jumping. Blizzard → stand between walls near other players. Tornado → keep moving away from it. Virus → stay alone.</p>
-      <p>Health is not restored between rounds. Reset in the lobby if you are low.</p>
+<div id="playerlist">
+  <div class="pl-head"><span class="pl-title"></span><span class="pl-stat">Survivals</span></div>
+  <div id="pl-rows"></div>
+</div>
+
+<div id="backpack">
+  <div id="inventory">
+    <div class="inv-head">
+      <div class="inv-search">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path fill="#bbb" d="M10 3a7 7 0 0 1 5.6 11.2l5.1 5.1-1.4 1.4-5.1-5.1A7 7 0 1 1 10 3Zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"/></svg>
+        <input id="inv-search" placeholder="Search" autocomplete="off" spellcheck="false">
+        <button id="inv-clear" aria-label="Clear">×</button>
+      </div>
+    </div>
+    <div id="inv-grid"></div>
+  </div>
+  <div id="hotbar"></div>
+</div>
+
+<div id="prompts"></div>
+<div id="bubbles"></div>
+<div id="notifications"></div>
+<div id="mouselock"></div>
+<div id="perfstats"></div>
+
+<!-- Roblox purchase prompt -->
+<div id="purchase"></div>
+
+<!-- Roblox in-game menu (Settings hub) -->
+<div id="hub">
+  <div class="hub-panel">
+    <div class="hub-tabs">
+      <button class="hub-tab" data-tab="players">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M9 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm7 1a3 3 0 1 1 0 6 3 3 0 0 1 0-6ZM9 13c3.3 0 7 1.6 7 4v3H2v-3c0-2.4 3.7-4 7-4Zm8.3.1c2.3.4 4.7 1.6 4.7 3.9v3h-4v-3c0-1.6-.3-2.8-.7-3.9Z"/></svg>
+        <span>People</span></button>
+      <button class="hub-tab" data-tab="settings">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="m13.6 2 .5 2.6 1.7.7 2.2-1.5 2.2 2.2-1.5 2.2.7 1.7 2.6.5v3.2l-2.6.5-.7 1.7 1.5 2.2-2.2 2.2-2.2-1.5-1.7.7-.5 2.6h-3.2l-.5-2.6-1.7-.7-2.2 1.5-2.2-2.2 1.5-2.2-.7-1.7L2 13.6v-3.2l2.6-.5.7-1.7-1.5-2.2 2.2-2.2 2.2 1.5 1.7-.7.5-2.6ZM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/></svg>
+        <span>Settings</span></button>
+      <button class="hub-tab" data-tab="report">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M5 3h2v1h12l-2.5 5L19 14H7v7H5Zm2 3v6h8.8l-1.5-3 1.5-3Z"/></svg>
+        <span>Report</span></button>
+      <button class="hub-tab" data-tab="help">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20Zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm-1 11h2v2h-2Zm1-9a4 4 0 0 1 1.3 7.8c-.2.1-.3.3-.3.5V14h-2v-.7a2.5 2.5 0 0 1 1.7-2.4A2 2 0 1 0 10 9H8a4 4 0 0 1 4-3Z"/></svg>
+        <span>Help</span></button>
+    </div>
+    <div class="hub-body">
+      <div class="hub-page" data-page="players"><div id="hub-players"></div></div>
+      <div class="hub-page" data-page="settings"><div id="hub-settings"></div></div>
+      <div class="hub-page" data-page="report">
+        <div class="hub-section">Report Abuse</div>
+        <div class="set-row"><span class="set-label">Game or Player?</span><div class="selector" data-static><button class="sel-arrow">‹</button><span class="sel-val">Player</span><button class="sel-arrow">›</button></div></div>
+        <div class="set-row"><span class="set-label">Which Player?</span><div class="selector"><span class="sel-val" id="report-player">—</span></div></div>
+        <div class="set-row"><span class="set-label">Type Of Abuse</span><div class="selector"><span class="sel-val">Choose One</span></div></div>
+        <textarea class="report-text" placeholder="Short Description (Optional)" maxlength="200"></textarea>
+        <p class="hub-note">There are no real players on this server, so reports are not sent anywhere.</p>
+      </div>
+      <div class="hub-page" data-page="help"><div id="hub-help"></div></div>
+      <div class="hub-page confirm" data-page="reset">
+        <div class="confirm-title">Are you sure you want to reset your character?</div>
+        <div class="confirm-btns"><button class="hub-btn primary" id="reset-yes">Reset</button><button class="hub-btn" id="reset-no">Don't Reset</button></div>
+      </div>
+      <div class="hub-page confirm" data-page="leave">
+        <div class="confirm-title">Are you sure you want to leave the experience?</div>
+        <div class="confirm-btns"><button class="hub-btn primary" id="leave-yes">Leave</button><button class="hub-btn" id="leave-no">Don't Leave</button></div>
+      </div>
+    </div>
+    <div class="hub-bottom">
+      <button class="hub-btn" id="hub-reset"><span class="keycap">R</span>Reset Character</button>
+      <button class="hub-btn" id="hub-leave"><span class="keycap">L</span>Leave</button>
+      <button class="hub-btn" id="hub-resume"><span class="keycap">Esc</span>Resume</button>
     </div>
   </div>
 </div>
 
+<!-- mobile controls -->
+<div id="thumb"><div id="thumb-knob"></div></div>
+<button id="jump-btn" aria-label="Jump"><svg viewBox="0 0 48 48" width="44" height="44"><path fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M12 28 24 16l12 12"/></svg></button>
+
+<!-- experience page + loading screen -->
 <div id="start">
-  <div class="st-card">
-    <div class="st-logo"><span class="st-noob"><i class="h"></i><i class="t"></i><i class="a l"></i><i class="a r"></i><i class="g l"></i><i class="g r"></i></span></div>
-    <h1>Natural Disaster<br>Survival</h1>
-    <p class="st-sub">Get dropped onto a random map. Read the warning. Survive the disaster.</p>
-    <label class="st-label" for="name-input">Username</label>
-    <input id="name-input" maxlength="20" autocomplete="off" spellcheck="false">
-    <button id="play-btn">Play</button>
-    <p class="st-keys">WASD to move · Space to jump · Right-drag to look · Scroll to zoom · Esc for menu</p>
-    <p class="st-foot">Fan-made browser tribute to Stickmasterluke's classic. Not affiliated with or endorsed by Roblox Corporation.</p>
+  <div class="xp">
+    <div class="xp-thumb"><div class="xp-thumb-title">Natural Disaster Survival</div></div>
+    <div class="xp-info">
+      <h1>Natural Disaster Survival</h1>
+      <div class="xp-by">By <b>Stickmasterluke</b> <span class="xp-fan">· browser fan remake</span></div>
+      <label class="xp-label" for="name-input">Display name</label>
+      <input id="name-input" maxlength="20" autocomplete="off" spellcheck="false">
+      <button id="play-btn" aria-label="Play"><svg viewBox="0 0 24 24" width="34" height="34"><path fill="#fff" d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5Z"/></svg></button>
+      <div class="xp-stats"><div><b>Genre</b><span>Survival</span></div><div><b>Max Players</b><span>21</span></div><div><b>Created</b><span>2008</span></div></div>
+      <p class="xp-desc">Survive a series of natural disasters! The map and disaster are chosen at random each round. Read the warning, pick your spot, and stay alive until the timer runs out.</p>
+      <p class="xp-foot">Unofficial tribute. Not affiliated with or endorsed by Roblox Corporation.</p>
+    </div>
   </div>
 </div>
-<div id="loading">Loading…</div>
+<div id="loading">
+  <div class="ld-center"><div class="ld-title">Natural Disaster Survival</div><div class="ld-by">By Stickmasterluke</div></div>
+  <div class="ld-spin"></div>
+</div>
 
 <script type="module" src="src/main.js"></script>
 </body>

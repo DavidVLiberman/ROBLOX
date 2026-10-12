@@ -4,6 +4,7 @@ import { MapBuilder } from './builder.js';
 import { DISASTERS } from './disasters/index.js';
 import { pick, shuffle, rand } from './util.js';
 import { COMBO_BADGES } from './data.js';
+import { botChat } from './bots.js';
 
 export const TIMES = { intermission: 15, announce: 5, roam: 20, prewarn: 15, survivors: 6 };
 
@@ -111,6 +112,7 @@ export class RoundManager {
             c.minHealthThisRound = c.health;
           }
           this.phase = 'roam'; this.timer = this.T.roam;
+          botChat(g, 'teleport');
         }
         break;
       case 'roam':
@@ -126,6 +128,7 @@ export class RoundManager {
           g.audio.warning();
           this.active.forEach((a, k) => g.ui.warning(a.def, k));
           for (const a of this.active) a.def.start(g, a.st);
+          botChat(g, this.active[0].def.bot);
         }
         break;
       case 'disaster': {
@@ -182,6 +185,7 @@ export class RoundManager {
       for (const [m, d, id] of COMBO_BADGES) if (this.mapName === m && names.includes(d)) g.awardBadge(id);
     }
     g.ui.showSurvivors(survivors.map(c => c.name));
+    botChat(g, 'survived');
     g.audio.chime();
     g.audio.stopLoops();
     this.phase = 'survivors';
@@ -189,6 +193,7 @@ export class RoundManager {
     g.ui.status('Survivors');
     g.island.drawBoard(this.totalRounds, [...g.chars].sort((a, b) => b.survivals - a.survivals), this.lastSurvivors);
     // bots sometimes buy Multi-Disaster for the next round
-    if (rand() < 0.12) { this.addMulti(); g.ui.toast(`${pick(g.chars.filter(c => !c.isPlayer))?.name || 'Someone'} used the Weather Machine!`); }
+    const buyer = pick(g.chars.filter(c => !c.isPlayer));
+    if (buyer && rand() < 0.12 && this.addMulti()) g.ui.system(`${buyer.name} added a disaster with the Weather Machine! (${this.multi}/7)`);
   }
 }

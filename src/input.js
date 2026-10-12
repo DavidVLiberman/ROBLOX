@@ -12,6 +12,7 @@ export class Input {
     this.touch = { joy: null, joyX: 0, joyY: 0, look: null, jump: false, pinch: null };
     this.lastActivity = performance.now();
     this.enabled = true;
+    this.shiftLockEnabled = true;
 
     addEventListener('keydown', (e) => {
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
@@ -19,7 +20,7 @@ export class Input {
       if (!this.keys.has(k)) this.pressed.add(k);
       this.keys.add(k);
       this.lastActivity = performance.now();
-      if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
+      if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'tab'].includes(k)) e.preventDefault();
       if (k === 'shift' && !e.repeat) this.toggleShiftLock();
     });
     addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
@@ -56,7 +57,7 @@ export class Input {
   }
 
   toggleShiftLock() {
-    if (this.isTouch) return;
+    if (this.isTouch || !this.shiftLockEnabled || this.blocked?.()) return;
     this.shiftLock = !this.shiftLock;
     if (this.shiftLock) this.canvas.requestPointerLock?.();
     else if (document.pointerLockElement) document.exitPointerLock();

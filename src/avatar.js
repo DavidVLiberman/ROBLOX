@@ -78,9 +78,10 @@ export class Avatar {
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     this.tagTex = tex;
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: true, transparent: true }));
-    sp.scale.set(6, 1.5, 1);
-    sp.position.y = 6.6;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: true, transparent: true, sizeAttenuation: false }));
+    sp.scale.set(0.2, 0.05, 1);
+    sp.center.set(0.5, 0);
+    sp.position.y = 5.6;
     sp.renderOrder = 5;
     this.tag = sp;
     this.root.add(sp);
@@ -91,46 +92,28 @@ export class Avatar {
     if (!this.tagCanvas) return;
     const ctx = this.tagCanvas.getContext('2d');
     ctx.clearRect(0, 0, 256, 64);
-    ctx.font = 'bold 26px "Source Sans Pro", Arial, sans-serif';
+    // Humanoid display: name above a health bar that only shows when hurt
+    ctx.font = '600 24px Montserrat, "Gotham SSm", Arial, sans-serif';
     ctx.textAlign = 'center';
-    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineJoin = 'round';
     ctx.strokeText(this.tagName, 128, 26);
     ctx.fillStyle = '#fff'; ctx.fillText(this.tagName, 128, 26);
     if (healthFrac < 0.999) {
-      ctx.fillStyle = '#c4281c'; ctx.fillRect(68, 40, 120, 10);
-      ctx.fillStyle = '#4bd04b'; ctx.fillRect(68, 40, 120 * Math.max(0, healthFrac), 10);
+      ctx.fillStyle = '#000'; ctx.fillRect(77, 39, 102, 10);
+      ctx.fillStyle = '#c4281c'; ctx.fillRect(78, 40, 100, 8);
+      ctx.fillStyle = '#4bd04b'; ctx.fillRect(78, 40, 100 * Math.max(0, healthFrac), 8);
     }
     this.tagTex.needsUpdate = true;
   }
 
-  // Simple holdable props (balloon / apple / hammer) attached to the right hand.
+  // Holdable tool models attached to the right hand.
   hold(kind) {
     if (this.held) { this.rightArm.remove(this.held); this.held = null; }
     this.heldKind = kind;
     if (!kind) return;
-    const g = new THREE.Group();
-    if (kind === 'balloon') {
-      const b = new THREE.Mesh(new THREE.SphereGeometry(1.1, 16, 12), new THREE.MeshStandardMaterial({ color: 0x3fcf3f, roughness: 0.35 }));
-      b.scale.y = 1.2; b.position.set(0, 6.5, 0);
-      const s = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 4.5), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-      s.position.y = 3.8;
-      g.add(b, s);
-      g.position.set(0, -2, 0);
-    } else if (kind === 'apple') {
-      const a = new THREE.Mesh(new THREE.SphereGeometry(0.45, 14, 10), new THREE.MeshStandardMaterial({ color: 0xd01c1c, roughness: 0.4 }));
-      const st = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.3), new THREE.MeshStandardMaterial({ color: 0x5a3a1a }));
-      st.position.y = 0.45;
-      g.add(a, st); g.position.set(0, -2.1, -0.6);
-    } else if (kind === 'hammer') {
-      const h = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 2.6), new THREE.MeshStandardMaterial({ color: 0x8a5a2b }));
-      const hd = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 1.2), new THREE.MeshStandardMaterial({ color: 0x2f6fd8, metalness: .3 }));
-      hd.rotation.y = Math.PI / 2; hd.position.z = 1.2;
-      g.add(h, hd); g.position.set(0, -2.1, 0.7);
-    } else if (kind === 'compass') {
-      const c = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.15, 16), new THREE.MeshStandardMaterial({ color: 0xf5cd30, metalness: .4 }));
-      c.rotation.x = Math.PI / 2; g.add(c); g.position.set(0, -2.1, -0.5);
-    }
-    g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    const g = makeToolModel(kind);
+    const offs = { balloon: [0, -2, 0], apple: [0, -2.1, -0.6], hammer: [0, -2.1, 0.7], compass: [0, -2.1, -0.5] };
+    g.position.set(...(offs[kind] || [0, -2.1, 0]));
     this.held = g;
     this.rightArm.add(g);
   }
@@ -178,4 +161,38 @@ export class Avatar {
     add(this.rightLeg, [1, 2, 1], this.colors.legs, -1);
     return out;
   }
+}
+
+// Tool models (also used for the purchase prompt thumbnails).
+export function makeToolModel(kind) {
+  const g = new THREE.Group();
+  if (kind === 'balloon') {
+    const b = new THREE.Mesh(new THREE.SphereGeometry(1.1, 18, 14), new THREE.MeshStandardMaterial({ color: 0x3fcf3f, roughness: 0.35 }));
+    b.scale.y = 1.2; b.position.set(0, 6.5, 0);
+    const s = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 4.5), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    s.position.y = 3.8;
+    g.add(b, s);
+  } else if (kind === 'apple') {
+    const a = new THREE.Mesh(new THREE.SphereGeometry(0.45, 16, 12), new THREE.MeshStandardMaterial({ color: 0xd01c1c, roughness: 0.4 }));
+    const st = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.3), new THREE.MeshStandardMaterial({ color: 0x5a3a1a }));
+    st.position.y = 0.45;
+    const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.04, 0.14), new THREE.MeshStandardMaterial({ color: 0x3f9a2f }));
+    leaf.position.set(0.13, 0.55, 0); leaf.rotation.z = 0.4;
+    g.add(a, st, leaf);
+  } else if (kind === 'hammer') {
+    const h = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 2.6), new THREE.MeshStandardMaterial({ color: 0x8a5a2b }));
+    const hd = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 1.2), new THREE.MeshStandardMaterial({ color: 0x2f6fd8, metalness: 0.3 }));
+    hd.rotation.y = Math.PI / 2; hd.position.z = 1.2;
+    g.add(h, hd);
+  } else if (kind === 'compass') {
+    const c = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.15, 20), new THREE.MeshStandardMaterial({ color: 0xf5cd30, metalness: 0.4, roughness: 0.4 }));
+    c.rotation.x = Math.PI / 2;
+    const face = new THREE.Mesh(new THREE.CircleGeometry(0.36, 20), new THREE.MeshStandardMaterial({ color: 0xf2f3f3 }));
+    face.position.z = 0.08;
+    const needle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.55, 0.02), new THREE.MeshBasicMaterial({ color: 0xc4281c }));
+    needle.position.z = 0.1; needle.rotation.z = 0.5;
+    g.add(c, face, needle);
+  }
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
 }

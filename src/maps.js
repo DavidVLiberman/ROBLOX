@@ -373,13 +373,13 @@ export const MAPS = [
       const state = { launched: false, t: 0, base: rocket.map(p => p.body.translation()), riders: new Set() };
       b.extras.rocket = { parts: rocket, state, top };
       b.interact.push({
-        pos: V(-26, 2, 26), radius: 6, label: 'Launch Rocket', part: btn,
+        pos: V(-26, 2, 26), radius: 6, height: 5, object: 'Rocket', label: 'Launch', part: btn,
         cond: () => !state.launched,
         action: () => {
           state.launched = true; state.t = 0;
           for (const c of game.chars) if (c.alive && c.pos.distanceTo(V(rx, c.pos.y, rz)) < 6 && c.pos.y > 40) state.riders.add(c);
           game.audio.explosion(V(rx, 2, rz), 1.5);
-          game.ui?.toast('3... 2... 1... LIFTOFF!');
+          game.ui?.toast('3... 2... 1... Liftoff!');
         },
       });
       b.extras.update = (dt) => {

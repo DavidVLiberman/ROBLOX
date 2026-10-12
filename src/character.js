@@ -320,6 +320,7 @@ export class Character {
     const r = this.avatar.root;
     r.position.copy(this.pos);
     r.rotation.y = this.yaw;
+    if (this.avatar.tag) this.avatar.tag.visible = this.game.camera.position.distanceTo(this.pos) < 100;
     this.avatar.animate(dt, this.state, this.hSpeed || 0);
   }
 }
