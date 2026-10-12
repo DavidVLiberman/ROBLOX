@@ -2,6 +2,7 @@
 // Everything is ordinary bricks so disasters can tear it apart.
 import * as THREE from 'three';
 import { BC, DEG, rand } from './util.js';
+import { signTexture } from './materials.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
@@ -65,20 +66,21 @@ export class MapBuilder {
   spot(type, x, y, z, path = []) { this.spots.push({ type, pos: V(x, y, z), path: path.map(p => p.clone()) }); }
 
   // Wall along X at fixed z (from x0 to x1). openings: [{a,b,y0,y1,glass}]
-  wallX(z, x0, x1, y0, h, t, color, mat, openings = [], glassColor = 0xa9d4f5) {
-    this._wall('x', z, x0, x1, y0, h, t, color, mat, openings, glassColor);
+  wallX(z, x0, x1, y0, h, t, color, mat, openings = [], glassColor = 0xa9d4f5, trim = null) {
+    this._wall('x', z, x0, x1, y0, h, t, color, mat, openings, glassColor, trim);
   }
-  wallZ(x, z0, z1, y0, h, t, color, mat, openings = [], glassColor = 0xa9d4f5) {
-    this._wall('z', x, z0, z1, y0, h, t, color, mat, openings, glassColor);
+  wallZ(x, z0, z1, y0, h, t, color, mat, openings = [], glassColor = 0xa9d4f5, trim = null) {
+    this._wall('z', x, z0, z1, y0, h, t, color, mat, openings, glassColor, trim);
   }
-  _wall(axis, c, a0, a1, y0, h, t, color, mat, openings, glassColor) {
+  _wall(axis, c, a0, a1, y0, h, t, color, mat, openings, glassColor, trim = null) {
     const cuts = new Set([a0, a1]);
     for (const o of openings) { if (o.a > a0 && o.a < a1) cuts.add(o.a); if (o.b > a0 && o.b < a1) cuts.add(o.b); }
     const xs = [...cuts].sort((p, q) => p - q);
-    const mk = (s0, s1, yy0, yy1, glass) => {
+    const mk = (s0, s1, yy0, yy1, kind, th = null) => {
       if (yy1 - yy0 < 0.05 || s1 - s0 < 0.05) return;
-      const th = glass ? 0.4 : t;
-      const col = glass ? glassColor : color, m = glass ? 'glass' : mat;
+      const glass = kind === 'glass', tr = kind === 'trim';
+      th ??= glass ? 0.4 : t;
+      const col = glass ? glassColor : tr ? trim : color, m = glass ? 'glass' : tr ? 'plastic' : mat;
       const extra = glass ? { tags: ['glass'] } : {};
       if (axis === 'x') this.box(s0, yy0, c - th / 2, s1, yy1, c + th / 2, col, m, extra);
       else this.box(c - th / 2, yy0, s0, c + th / 2, yy1, s1, col, m, extra);
@@ -86,10 +88,23 @@ export class MapBuilder {
     for (let i = 0; i < xs.length - 1; i++) {
       const s0 = xs[i], s1 = xs[i + 1], mid = (s0 + s1) / 2;
       const op = openings.find(o => o.a <= mid && o.b >= mid);
-      if (!op) { mk(s0, s1, y0, y0 + h, false); continue; }
-      mk(s0, s1, y0, Math.max(y0, op.y0), false);
-      mk(s0, s1, Math.min(y0 + h, op.y1), y0 + h, false);
-      if (op.glass) mk(s0, s1, Math.max(y0, op.y0), Math.min(y0 + h, op.y1), true);
+      if (!op) { mk(s0, s1, y0, y0 + h, 'wall'); continue; }
+      const oy0 = Math.max(y0, op.y0), oy1 = Math.min(y0 + h, op.y1);
+      mk(s0, s1, y0, oy0, 'wall');
+      mk(s0, s1, oy1, y0 + h, 'wall');
+      if (op.glass) {
+        if (trim) {
+          // sill + header frame the glass and stick out past the wall
+          mk(s0, s1, oy0, oy0 + 0.35, 'trim', t + 0.7);
+          mk(s0, s1, oy1 - 0.3, oy1, 'trim', t + 0.4);
+          mk(s0, s1, oy0 + 0.35, oy1 - 0.3, 'glass');
+        } else mk(s0, s1, oy0, oy1, 'glass');
+      } else if (trim && op.door && s1 - s0 >= 4) {
+        // door frame: two jambs and a header inside the opening
+        mk(s0, s0 + 0.45, oy0, oy1, 'trim', t + 0.4);
+        mk(s1 - 0.45, s1, oy0, oy1, 'trim', t + 0.4);
+        mk(s0 + 0.45, s1 - 0.45, oy1 - 0.55, oy1, 'trim', t + 0.4);
+      }
     }
   }
 
@@ -117,8 +132,9 @@ export class MapBuilder {
       floorColor = BC.reddishBrown, floorMat = 'wood', roof = 'flat', roofColor = BC.darkStone, roofMat = 'slate',
       windows = true, winW = 4, winH = 5, spacing = 8, door = 'S', doorX = 0, doorW = 5, glassColor = 0xa9d4f5,
       roofAccess = true, parapet = true, t = 1, stairColor = null, interior = null, noStairs = false, trim = null,
-      y: by = 0, stairFire = false, groundTile = true,
+      y: by = 0, stairFire = false, groundTile = true, ladder = null, ladderSide = 'E', roofDetails = true, furnish = null,
     } = o;
+    const trimColor = o.windowTrim ?? (trim ?? BC.institutionalWhite);
     const x0 = x - w / 2, x1 = x + w / 2, z0 = z - d / 2, z1 = z + d / 2;
     const ix0 = x0 + t, ix1 = x1 - t, iz0 = z0 + t, iz1 = z1 - t;
     const N = Math.round(fh);
@@ -164,15 +180,15 @@ export class MapBuilder {
       const eOpen = windows ? this.windowsAlong(z0 + 1, z1 - 1, wy, winOpts) : [];
       if (k === 0) {
         const dx = x + doorX;
-        const doorOp = { a: dx - doorW / 2, b: dx + doorW / 2, y0: by - 1, y1: by + 8, glass: false };
+        const doorOp = { a: dx - doorW / 2, b: dx + doorW / 2, y0: by - 1, y1: by + 8, glass: false, door: true };
         const list = door === 'N' ? nOpen : sOpen;
         for (let i = list.length - 1; i >= 0; i--) if (list[i].b > doorOp.a - 0.5 && list[i].a < doorOp.b + 0.5) list.splice(i, 1);
         list.push(doorOp);
       }
-      this.wallX(z1 - t / 2, x0, x1, wy, wh, t, color, mat, sOpen, glassColor);
-      this.wallX(z0 + t / 2, x0, x1, wy, wh, t, color, mat, nOpen, glassColor);
-      this.wallZ(x0 + t / 2, z0 + t, z1 - t, wy, wh, t, color, mat, wOpen, glassColor);
-      this.wallZ(x1 - t / 2, z0 + t, z1 - t, wy, wh, t, color, mat, eOpen, glassColor);
+      this.wallX(z1 - t / 2, x0, x1, wy, wh, t, color, mat, sOpen, glassColor, trimColor);
+      this.wallX(z0 + t / 2, x0, x1, wy, wh, t, color, mat, nOpen, glassColor, trimColor);
+      this.wallZ(x0 + t / 2, z0 + t, z1 - t, wy, wh, t, color, mat, wOpen, glassColor, trimColor);
+      this.wallZ(x1 - t / 2, z0 + t, z1 - t, wy, wh, t, color, mat, eOpen, glassColor, trimColor);
       if (trim) this.box(x0 - 0.3, y0 + fh - 1.6, z0 - 0.3, x1 + 0.3, y0 + fh - 1, z1 + 0.3, trim, 'plastic');
     }
     // stairs
@@ -186,7 +202,7 @@ export class MapBuilder {
     }
     let trussPart = null;
     if (useTruss) {
-      trussPart = this.block(ix0 + 1.5, by, iz0 + 1.5, 2, levelY(flights) + 0.4 - by, 2, BC.mediumStone, 'metal', { tags: ['truss'] });
+      trussPart = this.truss(ix0 + 1.5, by, iz0 + 1.5, levelY(flights) + 0.4 - by);
     }
     // roof
     if (roof === 'flat') {
@@ -198,6 +214,22 @@ export class MapBuilder {
         this.box(x0, top, z1 - 0.8, x1, top + 2, z1, color, mat);
         this.box(x0, top, z0 + 0.8, x0 + 0.8, top + 2, z1 - 0.8, color, mat);
         this.box(x1 - 0.8, top, z0 + 0.8, x1, top + 2, z1 - 0.8, color, mat);
+        // coping along the parapet top
+        if (trim) {
+          this.box(x0 - 0.2, top + 2, z0 - 0.2, x1 + 0.2, top + 2.3, z0 + 1, trim, 'plastic');
+          this.box(x0 - 0.2, top + 2, z1 - 1, x1 + 0.2, top + 2.3, z1 + 0.2, trim, 'plastic');
+        }
+      }
+      if (roofDetails && w >= 16 && d >= 12) {
+        // rooftop AC units and a vent pipe (never over the stair hatch)
+        const clear = (px, pz, hw, hd) => !(holes[floors] || []).some(h => px + hw > h.x0 - 1 && px - hw < h.x1 + 1 && pz + hd > h.z0 - 1 && pz - hd < h.z1 + 1);
+        const ax = x1 - 5, az = z1 - 4.5;
+        if (clear(ax, az, 2, 1.5)) {
+          this.block(ax, top, az, 4, 2.6, 3, BC.mediumStone, 'metal');
+          this.block(ax, top + 2.6, az, 2.4, 0.3, 2.4, BC.darkStone, 'metal');
+        }
+        if (w >= 26 && clear(ax - 6, az, 1.5, 1.5)) this.block(ax - 6, top, az, 3, 2, 3, BC.mediumStone, 'metal');
+        if (clear(x0 + 4, z1 - 3, 0.4, 0.4)) this.cyl(x0 + 4, top, z1 - 3, 0.8, 3, BC.darkStone, 'metal');
       }
     } else if (roof === 'gable') {
       this.box(x0, top - 1, z0, x1, top, z1, floorColor, floorMat);
@@ -215,6 +247,30 @@ export class MapBuilder {
         this.wedge(ex, top, z + d / 4, 1, rise2, d / 2, 0, color, mat);
         this.wedge(ex, top, z - d / 4, 1, rise2, d / 2, 180, color, mat);
       }
+      // ridge cap
+      this.box(x0 - 1.2, top + rise2 + 0.4, z - 0.7, x1 + 1.2, top + rise2 + 1.2, z + 0.7, trim ?? roofColor, trim ? 'plastic' : roofMat);
+    }
+    // front step and porch light
+    if (roofDetails) {
+      const dX0 = x + doorX, out = door === 'N' ? -1 : 1, wallZ = door === 'N' ? z0 : z1;
+      this.box(dX0 - doorW / 2 - 1, by, wallZ, dX0 + doorW / 2 + 1, by + 0.4, wallZ + out * 2.5, BC.mediumStone, 'concrete');
+      if (floors * fh >= 9) this.block(dX0 + doorW / 2 + 1.2, by + 7.5, wallZ + out * 0.2, 0.8, 1, 0.4, 0xfff2b0, 'neon');
+    }
+    // ---- exterior ladder to the roof (so every building has climbable high ground) ----
+    const roofReachable = roof === 'flat' && roofAccess && (useStairs || useTruss);
+    const wantLadder = ladder ?? (roof !== 'none' && !roofReachable && (floors * fh >= 8));
+    let ladderInfo = null;
+    if (wantLadder) {
+      const lz = z1 - Math.min(3, d / 4);
+      let lyTop;
+      if (roof === 'gable') {
+        const pitch = 32 * DEG;
+        lyTop = top + (d / 2 - Math.abs(lz - z)) * Math.tan(pitch) + 1.1;
+      } else lyTop = top + (parapet && roof === 'flat' ? 2.3 : 0.3);
+      const sx = ladderSide === 'W' ? -1 : 1, ex = sx > 0 ? x1 : x0;
+      this.truss(ex + sx * 1.1, by, lz, lyTop - by + 0.4);
+      ladderInfo = { base: V(ex + sx * 4, by, lz), top: V(ex + sx * 1.1, lyTop, lz), roof: V(roof === 'gable' ? x : x - sx * w * 0.2, roof === 'gable' ? top + (d / 2) * Math.tan(32 * DEG) * 0.6 : top, roof === 'gable' ? z + d * 0.15 : z) };
+      this.spot('high', ladderInfo.roof.x, ladderInfo.roof.y, ladderInfo.roof.z, [ladderInfo.base, ladderInfo.top, V(ex - sx * 1.5, ladderInfo.top.y - 0.5, lz), ladderInfo.roof]);
     }
     // ---- bot paths & spots ----
     const dX = x + doorX;
@@ -254,9 +310,45 @@ export class MapBuilder {
       this.spot('high', rc.x, rc.y, rc.z, p);
     }
     this.heights.push(roof === 'gable' ? top + (d / 2) * Math.tan(32 * DEG) : top + (roof === 'flat' && parapet ? 2 : 0));
-    const info = { x0, x1, z0, z1, ix0, ix1, iz0, iz1, levelY, floors, fh, top, doorOut, doorIn, path, flightInfo, holes };
+    const info = { x0, x1, z0, z1, ix0, ix1, iz0, iz1, levelY, floors, fh, top, doorOut, doorIn, path, flightInfo, holes, ladder: ladderInfo };
     if (interior) interior(this, info);
+    if (furnish ?? !interior) this.furnish(info, floorColor);
     return info;
+  }
+
+  // simple default furniture for each floor: table + chairs, sofa, shelf, rug
+  furnish(info, wood = BC.brown) {
+    const { ix0, ix1, iz0, iz1, x0, x1, z0, z1 } = info;
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    const w = ix1 - ix0, d = iz1 - iz0;
+    if (w < 10 || d < 8) return;
+    const palette = [BC.brightRed, BC.brightBlue, BC.darkGreen, BC.mauve, BC.brightOrange];
+    for (let k = 0; k < info.floors; k++) {
+      const y = info.levelY(k) + (k === 0 ? 0.3 : 0);
+      // keep the doorway clear: table goes to the side away from the door
+      const fx = info.doorOut.x <= cx ? cx + w * 0.2 : cx - w * 0.2;
+      this.table(fx, y, cz, 5, 3, BC.reddishBrown);
+      this.chair(fx - 1.5, y, cz + 2.6, 180, palette[(k + 1) % 5]);
+      this.chair(fx + 1.5, y, cz - 2.6, 0, palette[(k + 1) % 5]);
+      if (d >= 16) this.block(ix0 + 0.8, y, cz, 1.4, 6, 5, wood, 'wood', { tags: ['flammable'] });
+      if (w >= 18 && d >= 20) {
+        this.block(ix1 - 2, y, cz, 3, 1.6, 7, palette[k % 5], 'fabric', { tags: ['flammable'] });
+        this.block(ix1 - 0.9, y + 1.6, cz, 1, 1.8, 7, palette[k % 5], 'fabric', { tags: ['flammable'] });
+      }
+      this.box(fx - 3.5, y, cz - 3, fx + 3.5, y + 0.12, cz + 3, palette[(k + 2) % 5], 'fabric');
+    }
+  }
+
+  // Sign: a board with text drawn on its front (+z before rotation)
+  sign(x, y, z, w, h, text, { bg = '#1b2a35', fg = '#ffffff', rotY = 0, depth = 0.4, color = null, font = 'Roboto', glow = false, tags = [] } = {}) {
+    const p = this.part({ pos: [x, y + h / 2, z], size: [w, h, depth], color: color ?? new THREE.Color(bg).getHex(), mat: 'plastic', rot: [0, rotY, 0], tags });
+    this.world.addDecal(p, signTexture(text, w, h, { bg, fg, font }), 'front', { transparent: false, emissive: glow });
+    return p;
+  }
+
+  bush(x, z, s = 1, color = BC.darkGreen) {
+    this.ball(x, -0.6 * s, z, 3.6 * s, color, 'grass', { tags: ['flammable'] });
+    this.ball(x + 1.2 * s, -0.5 * s, z + 0.6 * s, 2.8 * s, BC.brightGreen, 'grass', { tags: ['flammable'] });
   }
 
   // ---------------- props ----------------
@@ -273,15 +365,20 @@ export class MapBuilder {
         this.part({ pos: [x + Math.sin(a * DEG) * r, 14 * s, z + Math.cos(a * DEG) * r], size: [2 * s, 0.4, 7 * s], color: BC.brightGreen, mat: 'grass', rot: [-20, a, 0], tags: ['tree', 'flammable'] });
       }
     } else {
-      this.cyl(x, 0, z, 1.6 * s, 7 * s, BC.reddishBrown, 'wood', { tags: ['tree', 'flammable', ...ft] });
-      this.ball(x, 5.5 * s, z, 8 * s, BC.darkGreen, 'grass', { tags: ['tree', 'flammable'] });
-      this.ball(x + 2 * s, 7 * s, z + 1 * s, 5.5 * s, BC.brightGreen, 'grass', { tags: ['tree', 'flammable'] });
+      this.cyl(x, 0, z, 1.6 * s, 8 * s, BC.reddishBrown, 'wood', { tags: ['tree', 'flammable', ...ft] });
+      this.ball(x, 6 * s, z, 8.5 * s, BC.darkGreen, 'grass', { tags: ['tree', 'flammable'] });
+      this.ball(x + 2.4 * s, 7.6 * s, z + 1 * s, 6 * s, 0x3f8f3f, 'grass', { tags: ['tree', 'flammable'] });
+      this.ball(x - 2 * s, 8 * s, z - 1.4 * s, 5.5 * s, 0x2f7a3a, 'grass', { tags: ['tree', 'flammable'] });
+      this.ball(x + 0.4 * s, 10.5 * s, z + 0.2 * s, 5 * s, 0x4a9e47, 'grass', { tags: ['tree', 'flammable'] });
     }
   }
 
   lamp(x, z, h = 12, fire = false) {
-    this.cyl(x, 0, z, 0.6, h, BC.black, 'metal');
-    this.block(x, h, z, 1.6, 1.4, 1.6, 0xfff2b0, 'neon', { tags: fire ? ['fire'] : [] });
+    this.cyl(x, 0, z, 1.4, 0.8, BC.black, 'metal');
+    this.cyl(x, 0.8, z, 0.6, h - 0.8, BC.black, 'metal');
+    this.block(x + 1, h - 0.3, z, 2.6, 0.4, 0.5, BC.black, 'metal');
+    this.block(x + 2, h - 1.3, z, 1.4, 1.1, 1.4, BC.black, 'metal');
+    this.block(x + 2, h - 1.6, z, 1.1, 0.4, 1.1, 0xfff2b0, 'neon', { tags: fire ? ['fire'] : [] });
   }
 
   bench(x, z, rotY = 0, color = BC.reddishBrown) {
@@ -321,7 +418,8 @@ export class MapBuilder {
     this.block(x1, 0, z1, 0.7, h, 0.7, color, mat, { tags: ['flammable'] });
   }
 
-  truss(x, y, z, h) { return this.block(x, y, z, 2, h, 2, BC.mediumStone, 'metal', { tags: ['truss'] }); }
+  // Roblox TrussPart: climb it by walking into it
+  truss(x, y, z, h) { return this.block(x, y, z, 2, h, 2, BC.mediumStone, 'truss', { tags: ['truss'] }); }
 
   // drivable (optional) car: returns vehicle record
   car(x, z, rotY = 0, color = BC.brightRed, { drivable = true, fire = false } = {}) {

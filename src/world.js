@@ -218,6 +218,33 @@ export class World {
     _p.set(t.x, t.y, t.z); _q.set(r.x, r.y, r.z, r.w);
     _m.compose(_p, _q, part.size);
     part.pool.set(part.inst, _m);
+    if (part.decals) for (const d of part.decals) {
+      d.mesh.position.copy(d.offset).applyQuaternion(_q).add(_p);
+      d.mesh.quaternion.copy(_q).multiply(d.rot);
+    }
+  }
+
+  // A flat textured sign stuck to one face of a part (like a Roblox Decal/SurfaceGui).
+  // face: 'front' (+z), 'back' (-z), 'left' (-x), 'right' (+x), 'top' (+y)
+  addDecal(part, texture, face = 'front', { w = null, h = null, transparent = true, emissive = false } = {}) {
+    const s = part.size;
+    const faces = {
+      front: [new THREE.Vector3(0, 0, s.z / 2 + 0.03), new THREE.Euler(0, 0, 0), s.x, s.y],
+      back: [new THREE.Vector3(0, 0, -s.z / 2 - 0.03), new THREE.Euler(0, Math.PI, 0), s.x, s.y],
+      right: [new THREE.Vector3(s.x / 2 + 0.03, 0, 0), new THREE.Euler(0, Math.PI / 2, 0), s.z, s.y],
+      left: [new THREE.Vector3(-s.x / 2 - 0.03, 0, 0), new THREE.Euler(0, -Math.PI / 2, 0), s.z, s.y],
+      top: [new THREE.Vector3(0, s.y / 2 + 0.03, 0), new THREE.Euler(-Math.PI / 2, 0, 0), s.x, s.z],
+    };
+    const [offset, euler, fw, fh] = faces[face];
+    const mat = emissive
+      ? new THREE.MeshBasicMaterial({ map: texture, transparent, alphaTest: transparent ? 0.05 : 0 })
+      : new THREE.MeshStandardMaterial({ map: texture, transparent, alphaTest: transparent ? 0.05 : 0, roughness: 0.8 });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w ?? fw, h ?? fh), mat);
+    mesh.receiveShadow = true;
+    this.scene.add(mesh);
+    (part.decals ||= []).push({ mesh, offset, rot: new THREE.Quaternion().setFromEuler(euler) });
+    this.syncPart(part);
+    return mesh;
   }
 
   setColor(part, color) {
@@ -266,6 +293,7 @@ export class World {
     this.byCollider.delete(part.collider.handle);
     this.physics.removeRigidBody(part.body);
     part.pool.release(part.inst);
+    if (part.decals) for (const d of part.decals) { this.scene.remove(d.mesh); d.mesh.geometry.dispose(); d.mesh.material.map?.dispose(); d.mesh.material.dispose(); }
     this.parts.delete(part);
     this.dynamic.delete(part);
     if (this.onPartRemoved) this.onPartRemoved(part);

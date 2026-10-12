@@ -7,7 +7,11 @@ import { GRAVITY, WALK_SPEED, JUMP_POWER, MAX_HEALTH, clamp } from './util.js';
 
 const HALF = 2.5; // capsule centre above feet
 let sharedKCC = null;
-const QUERY_GROUPS = ((0xffff) << 16) | (0x0001 | 0x0002);
+// Movement only collides with bricks; characters are separated softly below so
+// crowds at spawn never lock anyone in place.
+const QUERY_GROUPS = ((0xffff) << 16) | 0x0001;
+const COYOTE = 0.12;      // seconds after walking off a ledge that a jump still works
+const CLIMB_SPEED = 12;   // studs/s, about WalkSpeed * 0.75 like Roblox ladders
 
 export class Character {
   constructor(game, { name, isPlayer = false, colors = NOOB_COLORS, userId = 0 }) {
@@ -18,6 +22,8 @@ export class Character {
     this.avatar = new Avatar(colors, isPlayer ? '' : name);
     game.scene.add(this.avatar.root);
     this.pos = new THREE.Vector3();
+    this.prevPos = new THREE.Vector3();   // for render interpolation between physics steps
+    this.lastGrounded = -1;
     this.vel = new THREE.Vector3();
     this.ext = new THREE.Vector3();     // external horizontal velocity (pushes, wind, tornado)
     this.move = new THREE.Vector3();    // desired move direction (world, |m| <= 1)
@@ -47,9 +53,11 @@ export class Character {
       RAPIER.ColliderDesc.capsule(1.5, 1.0).setCollisionGroups(IG_CHAR).setSolverGroups(IG_CHAR), this.body);
     w.byCollider.set(this.collider.handle, this);
     if (!sharedKCC) {
-      sharedKCC = w.physics.createCharacterController(0.05);
-      sharedKCC.enableAutostep(1.1, 0.4, true);
-      sharedKCC.enableSnapToGround(0.6);
+      sharedKCC = w.physics.createCharacterController(0.04);
+      // step up curbs, stairs and small ledges without jumping
+      sharedKCC.enableAutostep(1.6, 0.3, true);
+      sharedKCC.enableSnapToGround(0.9);
+      sharedKCC.setSlideEnabled(true);
       sharedKCC.setMaxSlopeClimbAngle(55 * Math.PI / 180);
       sharedKCC.setMinSlopeSlideAngle(60 * Math.PI / 180);
       sharedKCC.setApplyImpulsesToDynamicBodies(true);
@@ -85,6 +93,7 @@ export class Character {
 
   teleport(pos) {
     this.pos.copy(pos);
+    this.prevPos.copy(pos);
     this.vel.set(0, 0, 0); this.ext.set(0, 0, 0);
     if (this.seat) this.seat.occupant = null;
     this.seat = null;
@@ -181,6 +190,7 @@ export class Character {
       return;
     }
     const game = this.game;
+    this.prevPos.copy(this.pos);
     if (this.seat) {
       if (!this.seat.alive || !this.seat.anchored) { this.unsit(); }
       else {
@@ -205,7 +215,7 @@ export class Character {
     const speed = WALK_SPEED * this.speedMul * (swimming ? 0.8 : 1);
 
     if (climbing) {
-      this.vel.y = 13;
+      this.vel.y = CLIMB_SPEED;
     } else if (swimming) {
       const target = this.jump ? 16 : (centerY < water - 1.2 ? 9 : -1);
       this.vel.y += (target - this.vel.y) * Math.min(1, dt * 5);
@@ -214,9 +224,11 @@ export class Character {
       this.vel.y -= g * dt;
       if (this.vel.y < -250) this.vel.y = -250;
     }
-    if (this.jump && this.grounded && !swimming && !climbing && this.vel.y <= 1) {
+    const canJump = this.grounded || game.time - this.lastGrounded < COYOTE;
+    if (this.jump && canJump && !swimming && !climbing && this.vel.y <= 1 && game.time - (this.jumpedAt || 0) > 0.2) {
       this.vel.y = JUMP_POWER;
       this.grounded = false;
+      this.lastGrounded = -1;
       this.jumpedAt = game.time;
     }
 
@@ -227,6 +239,12 @@ export class Character {
     const mv = this.kcc.computedMovement();
     const wasGrounded = this.grounded;
     this.grounded = this.kcc.computedGrounded();
+    // grounded can flicker on edges and stairs: confirm with a short probe
+    if (!this.grounded && this.vel.y <= 0 && !climbing) {
+      const probe = game.world.raycast({ x: this.pos.x + mv.x, y: this.pos.y + mv.y + 0.6, z: this.pos.z + mv.z }, { x: 0, y: -1, z: 0 }, 1.0);
+      if (probe) this.grounded = true;
+    }
+    if (this.grounded) this.lastGrounded = game.time;
     if (this.grounded && this.vel.y < 0) {
       // landing impact: Roblox has no fall damage, keep it that way
       this.vel.y = -0.5;
@@ -253,7 +271,7 @@ export class Character {
       const target = Math.atan2(this.move.x, this.move.z);
       let d = target - this.yaw;
       d = Math.atan2(Math.sin(d), Math.cos(d));
-      this.yaw += d * Math.min(1, dt * 14);
+      this.yaw += d * Math.min(1, dt * 18);
     }
 
     // ground probe
@@ -263,17 +281,18 @@ export class Character {
       if (hit && hit.object && hit.object.size) this.groundPart = hit.object;
     }
 
-    // push other players (griefers love this)
-    if (mlen > 0.2) {
-      for (const o of game.chars) {
-        if (o === this || !o.alive || o.seat) continue;
-        const ox = o.pos.x - this.pos.x, oz = o.pos.z - this.pos.z;
-        if (Math.abs(o.pos.y - this.pos.y) > 4) continue;
-        const d2 = ox * ox + oz * oz;
-        if (d2 < 2.4 * 2.4 && d2 > 0.01 && (ox * this.move.x + oz * this.move.z) > 0) {
-          o.ext.x += this.move.x * 30 * dt; o.ext.z += this.move.z * 30 * dt;
-        }
-      }
+    // characters push each other instead of blocking (griefers still shove people off ledges)
+    for (const o of game.chars) {
+      if (o === this || !o.alive || o.seat) continue;
+      if (Math.abs(o.pos.y - this.pos.y) > 4.5) continue;
+      const ox = o.pos.x - this.pos.x, oz = o.pos.z - this.pos.z;
+      const d2 = ox * ox + oz * oz;
+      if (d2 > 2.1 * 2.1) continue;
+      const d = Math.sqrt(d2) || 0.01;
+      const nx = d2 > 1e-4 ? ox / d : Math.random() - .5, nz = d2 > 1e-4 ? oz / d : Math.random() - .5;
+      const overlap = 2.1 - d;
+      o.ext.x += nx * overlap * 18 * dt; o.ext.z += nz * overlap * 18 * dt;
+      if (mlen > 0.2 && (nx * this.move.x + nz * this.move.z) > 0) { o.ext.x += this.move.x * 26 * dt; o.ext.z += this.move.z * 26 * dt; }
     }
 
     // seats
@@ -302,12 +321,13 @@ export class Character {
 
   checkClimb() {
     const mlen = Math.hypot(this.move.x, this.move.z);
+    this.climbMove = mlen;
     if (mlen < 0.1) return false;
     for (const t of this.game.trusses) {
       if (!t.alive || !t.anchored) continue;
       const b = this.game.world.aabb(t);
       if (this.pos.x + 1.6 < b.minX || this.pos.x - 1.6 > b.maxX || this.pos.z + 1.6 < b.minZ || this.pos.z - 1.6 > b.maxZ) continue;
-      if (this.pos.y > b.maxY + 0.2 || this.pos.y + 5 < b.minY) continue;
+      if (this.pos.y > b.maxY - 0.1 || this.pos.y + 5 < b.minY) continue;
       const cx = clamp(this.pos.x, b.minX, b.maxX) - this.pos.x, cz = clamp(this.pos.z, b.minZ, b.maxZ) - this.pos.z;
       const cl = Math.hypot(cx, cz);
       if (cl < 0.01 || (cx * this.move.x + cz * this.move.z) / cl / mlen > 0.3) return true;
@@ -315,10 +335,15 @@ export class Character {
     return false;
   }
 
-  render(dt) {
+  // smooth position between fixed physics steps (alpha = fraction of the next step)
+  renderPos(alpha) {
+    return this._rp = (this._rp || new THREE.Vector3()).copy(this.prevPos).lerp(this.pos, alpha);
+  }
+
+  render(dt, alpha = 1) {
     if (!this.alive) return;
     const r = this.avatar.root;
-    r.position.copy(this.pos);
+    r.position.copy(this.renderPos(alpha));
     r.rotation.y = this.yaw;
     if (this.avatar.tag) this.avatar.tag.visible = this.game.camera.position.distanceTo(this.pos) < 100;
     this.avatar.animate(dt, this.state, this.hSpeed || 0);

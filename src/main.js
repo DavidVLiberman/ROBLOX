@@ -389,9 +389,11 @@ class Game {
     }
     if (this.started && this.time > this.nextIdleChat) { this.nextIdleChat = this.time + 25 + Math.random() * 35; if (this.round.phase === 'intermission') botChat(this, 'idle'); }
 
-    for (const c of this.chars) c.render(dt);
+    const alpha = Math.min(1, this.acc / STEP);
+    for (const c of this.chars) c.render(dt, alpha);
     const p = this.player;
-    const subj = p.alive ? new THREE.Vector3(p.pos.x, p.pos.y + 4.5, p.pos.z) : null;
+    const rp = p.renderPos(alpha);
+    const subj = p.alive ? new THREE.Vector3(rp.x, rp.y + 4.5, rp.z) : null;
     this.camController.update(dt, this.input, subj);
     p.avatar.setVisible(p.alive && !this.camController.firstPerson);
     this.effects.update(dt);

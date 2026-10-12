@@ -109,10 +109,19 @@ const builders = {
     ctx.fillStyle = '#d0d0d0'; ctx.fillRect(0, 0, s, s);
     noise(ctx, s, 60);
   },
+  // Roblox TrussPart look: square frame with diagonal braces, open in between
+  truss(ctx, s) {
+    ctx.clearRect(0, 0, s, s);
+    ctx.strokeStyle = '#e6e6e6'; ctx.lineCap = 'square';
+    ctx.lineWidth = s * 0.12; ctx.strokeRect(s * 0.06, s * 0.06, s * 0.88, s * 0.88);
+    ctx.lineWidth = s * 0.08;
+    ctx.beginPath(); ctx.moveTo(s * 0.1, s * 0.1); ctx.lineTo(s * 0.9, s * 0.9); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(s * 0.9, s * 0.1); ctx.lineTo(s * 0.1, s * 0.9); ctx.stroke();
+  },
 };
 
 // Studs per texture repeat for each material.
-const SCALE = { plastic: 8, studs: 2, brick: 4, wood: 6, concrete: 10, metal: 6, grass: 10, sand: 8, slate: 12, fabric: 4, asphalt: 12 };
+const SCALE = { plastic: 8, studs: 2, brick: 4, wood: 6, concrete: 10, metal: 6, grass: 10, sand: 8, slate: 12, fabric: 4, asphalt: 12, truss: 2 };
 
 const texCache = {};
 function getTexture(kind) {
@@ -127,29 +136,37 @@ function getTexture(kind) {
   return tex;
 }
 
-function triplanar(material, scale) {
+function triplanar(material, scale, edge = 0.8) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTexScale = { value: scale };
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vTriPos;\nvarying vec3 vTriNormal;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vTriPos;\nvarying vec3 vTriHalf;\nvarying vec3 vTriNormal;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         vec3 triScale = vec3(1.0);
         #ifdef USE_INSTANCING
           triScale = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
         #endif
         vTriPos = position * triScale;
+        vTriHalf = triScale * 0.5;
         vTriNormal = normal;`);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vTriPos;\nvarying vec3 vTriNormal;\nuniform float uTexScale;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vTriPos;\nvarying vec3 vTriHalf;\nvarying vec3 vTriNormal;\nuniform float uTexScale;')
       .replace('#include <map_fragment>', `
         #ifdef USE_MAP
           vec3 an = abs(vTriNormal);
-          vec2 tuv = (an.x > an.y && an.x > an.z) ? vTriPos.zy : ((an.y > an.z) ? vTriPos.xz : vTriPos.xy);
+          bool fx = an.x > an.y && an.x > an.z;
+          bool fy = !fx && an.y > an.z;
+          vec2 tuv = fx ? vTriPos.zy : (fy ? vTriPos.xz : vTriPos.xy);
           vec4 sampledDiffuseColor = texture2D(map, tuv / uTexScale);
           diffuseColor *= sampledDiffuseColor;
+          // soft darkening toward each face's edges so stacked bricks read clearly
+          vec2 hp = fx ? vTriHalf.zy : (fy ? vTriHalf.xz : vTriHalf.xy);
+          vec2 ed = hp - abs(tuv);
+          float edge = min(ed.x, ed.y);
+          diffuseColor.rgb *= mix(${edge.toFixed(2)}, 1.0, smoothstep(0.0, 0.45, edge));
         #endif`);
   };
-  material.customProgramCacheKey = () => 'tri' + scale;
+  material.customProgramCacheKey = () => 'tri' + scale + ':' + edge;
   return material;
 }
 
@@ -163,12 +180,15 @@ export function getMaterial(kind) {
     m = new THREE.MeshBasicMaterial({ color: 0xffffff });
   } else if (kind === 'forcefield') {
     m = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, depthWrite: false });
+  } else if (kind === 'truss') {
+    m = new THREE.MeshStandardMaterial({ color: 0xffffff, map: getTexture('truss'), roughness: 0.5, metalness: 0.3, alphaTest: 0.5, side: THREE.DoubleSide });
+    triplanar(m, SCALE.truss, 1.0);
   } else if (kind === 'water') {
     m = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.75, roughness: 0.15, metalness: 0.1, depthWrite: false });
   } else {
     const rough = { metal: 0.45, plastic: 0.7, studs: 0.7, glass: 0.1 }[kind] ?? 0.9;
     m = new THREE.MeshStandardMaterial({ color: 0xffffff, map: getTexture(kind), roughness: rough, metalness: kind === 'metal' ? 0.35 : 0 });
-    triplanar(m, SCALE[kind] || 8);
+    triplanar(m, SCALE[kind] || 8, kind === 'grass' || kind === 'sand' ? 0.92 : 0.8);
   }
   matCache[kind] = m;
   return m;
@@ -217,5 +237,27 @@ export function makeLabelTexture(lines, opts = {}) {
   });
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// Text for signs (drawn at 64 px per stud, capped).
+export function signTexture(text, w, h, { bg = '#1b2a35', fg = '#ffffff', font = 'Roboto' } = {}) {
+  const ppu = Math.min(64, 1024 / Math.max(w, h));
+  const c = document.createElement('canvas');
+  c.width = Math.max(32, Math.round(w * ppu)); c.height = Math.max(16, Math.round(h * ppu));
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = Math.max(2, c.height * 0.05);
+  ctx.strokeRect(ctx.lineWidth / 2, ctx.lineWidth / 2, c.width - ctx.lineWidth, c.height - ctx.lineWidth);
+  const lines = String(text).split('\n');
+  let size = c.height * 0.62 / lines.length;
+  ctx.font = `900 ${size}px ${font}, Arial, sans-serif`;
+  const widest = Math.max(...lines.map(l => ctx.measureText(l).width));
+  if (widest > c.width * 0.88) { size *= c.width * 0.88 / widest; ctx.font = `900 ${size}px ${font}, Arial, sans-serif`; }
+  ctx.fillStyle = fg; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  lines.forEach((l, i) => ctx.fillText(l, c.width / 2, c.height * (i + 0.5) / lines.length + size * 0.04));
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
   return tex;
 }
