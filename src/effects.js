@@ -26,6 +26,80 @@ function radialTexture(stops) {
   return t;
 }
 
+const _bp = new THREE.Vector3(), _bv = new THREE.Vector3(), _c3 = new THREE.Color();
+
+const pVert = `attribute float size; attribute float alpha; attribute vec3 tint;
+uniform float scale; varying vec3 vTint; varying float vAlpha;
+#include <fog_pars_vertex>
+void main() {
+  vTint = tint; vAlpha = alpha;
+  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+  gl_PointSize = size * scale / max(0.5, -mvPosition.z);
+  gl_Position = projectionMatrix * mvPosition;
+  #include <fog_vertex>
+}`;
+const pFrag = `uniform sampler2D map; varying vec3 vTint; varying float vAlpha;
+#include <fog_pars_fragment>
+void main() {
+  vec4 t = texture2D(map, gl_PointCoord);
+  gl_FragColor = vec4(vTint * t.rgb, t.a * vAlpha);
+  if (gl_FragColor.a < 0.01) discard;
+  #include <fog_fragment>
+}`;
+
+// Ring buffer of camera-facing soft particles drawn as one THREE.Points.
+class Particles {
+  constructor(scene, map, blending, cap) {
+    this.cap = cap; this.next = 0;
+    const geo = new THREE.BufferGeometry();
+    this.pos = new Float32Array(cap * 3); this.tint = new Float32Array(cap * 3);
+    this.size = new Float32Array(cap); this.alpha = new Float32Array(cap);
+    this.vel = new Float32Array(cap * 3); this.age = new Float32Array(cap); this.life = new Float32Array(cap);
+    this.s0 = new Float32Array(cap); this.s1 = new Float32Array(cap); this.a0 = new Float32Array(cap);
+    geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('tint', new THREE.BufferAttribute(this.tint, 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('size', new THREE.BufferAttribute(this.size, 1).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('alpha', new THREE.BufferAttribute(this.alpha, 1).setUsage(THREE.DynamicDrawUsage));
+    this.uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: map }, scale: { value: 400 } }]);
+    this.uniforms.map.value = map;
+    const mat = new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: pVert, fragmentShader: pFrag, transparent: true, depthWrite: false, blending, fog: true });
+    this.points = new THREE.Points(geo, mat);
+    this.points.frustumCulled = false;
+    this.points.renderOrder = 3;
+    this.geo = geo;
+    this.live = 0;
+    scene.add(this.points);
+  }
+  emit(p, color, size0, size1, life, vel, alpha = 1) {
+    const i = this.next; this.next = (this.next + 1) % this.cap;
+    this.pos[i * 3] = p.x; this.pos[i * 3 + 1] = p.y; this.pos[i * 3 + 2] = p.z;
+    _c3.set(color);
+    this.tint[i * 3] = _c3.r; this.tint[i * 3 + 1] = _c3.g; this.tint[i * 3 + 2] = _c3.b;
+    this.vel[i * 3] = vel ? vel.x : 0; this.vel[i * 3 + 1] = vel ? vel.y : 0; this.vel[i * 3 + 2] = vel ? vel.z : 0;
+    this.age[i] = 0; this.life[i] = life; this.s0[i] = size0; this.s1[i] = size1; this.a0[i] = alpha;
+    this.size[i] = size0; this.alpha[i] = alpha;
+    this.live = Math.min(this.cap, this.live + 1);
+  }
+  update(dt, camera) {
+    this.uniforms.scale.value = innerHeight / 2 / Math.tan(camera.fov * Math.PI / 360);
+    let any = false;
+    for (let i = 0; i < this.cap; i++) {
+      if (this.alpha[i] <= 0) continue;
+      any = true;
+      const a = (this.age[i] += dt);
+      const k = a / this.life[i];
+      if (k >= 1) { this.alpha[i] = 0; this.size[i] = 0; continue; }
+      this.pos[i * 3] += this.vel[i * 3] * dt; this.pos[i * 3 + 1] += this.vel[i * 3 + 1] * dt; this.pos[i * 3 + 2] += this.vel[i * 3 + 2] * dt;
+      this.size[i] = this.s0[i] + (this.s1[i] - this.s0[i]) * k;
+      this.alpha[i] = this.a0[i] * (1 - k);
+    }
+    if (!any && !this.dirty) return;
+    this.dirty = any;
+    for (const n of ['position', 'tint', 'size', 'alpha']) this.geo.attributes[n].needsUpdate = true;
+  }
+  clear() { this.alpha.fill(0); this.size.fill(0); this.dirty = true; }
+}
+
 export class Effects {
   constructor(game) {
     this.game = game;
@@ -80,8 +154,15 @@ export class Effects {
     this.flameTex = radialTexture([[0, 'rgba(255,255,200,1)'], [0.25, 'rgba(255,190,60,0.95)'], [0.6, 'rgba(255,80,0,0.5)'], [1, 'rgba(255,0,0,0)']]);
     this.smokeTex = radialTexture([[0, 'rgba(80,80,80,0.6)'], [1, 'rgba(60,60,60,0)']]);
     this.sparkTex = radialTexture([[0, 'rgba(255,255,255,1)'], [1, 'rgba(255,255,255,0)']]);
-    this.bursts = [];
-    this.flames = new Map();   // part -> sprite
+    this.smoke = new Particles(scene, this.sparkTex, THREE.NormalBlending, game.lowGfx ? 1500 : 3500);
+    this.fire = new Particles(scene, this.flameTex, THREE.AdditiveBlending, 800);
+    this.flames = new Map();   // part -> { level, sprites }
+    this.flameLevels = new Map();
+    this.burning = new Set();
+    this.scorches = [];
+    this.boltGeo = new THREE.BoxGeometry(1, 1, 1);
+    this.scorchGeo = new THREE.PlaneGeometry(1, 1);
+    this.scorchTex = radialTexture([[0, 'rgba(20,16,14,0.9)'], [0.55, 'rgba(30,24,20,0.6)'], [1, 'rgba(30,24,20,0)']]);
     this.bolts = [];
   }
 
@@ -117,7 +198,7 @@ export class Effects {
       return;
     }
     if (this.weather[kind]) return;
-    const count = this.game.lowGfx ? 1500 : 3500;
+    const count = (this.game.lowGfx ? 1500 : 3500) * (kind === 'sand' ? 1.6 : 1) | 0;
     const range = kind === 'sand' ? 120 : 90, height = 70;
     const pos = new Float32Array(count * 6);
     const seeds = [];
@@ -129,7 +210,8 @@ export class Effects {
       obj = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, map: this.sparkTex, size: 0.9, transparent: true, opacity: 0.95, depthWrite: false }));
     } else {
       geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      const color = kind === 'acid' ? 0x7dff4a : kind === 'sand' ? 0xf0dcae : 0xaac8e8;
+      // acid rain looks like rain: it is the bricks that change colour
+      const color = kind === 'acid' ? 0xc4d8b4 : kind === 'sand' ? 0xf0dcae : 0xaac8e8;
       obj = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: kind === 'sand' ? 0.55 : 0.6, depthWrite: false }));
     }
     obj.frustumCulled = false;
@@ -168,86 +250,110 @@ export class Effects {
   }
 
   // ---------- one-shot effects ----------
+  // All puffs, sparks and explosion flashes go through two pooled particle systems
+  // (normal + additive) so a busy disaster costs two draw calls, not hundreds.
   burst(pos, { color = 0xffa040, size = 8, life = 0.6, smoke = true, count = 1 } = {}) {
     for (let i = 0; i < count; i++) {
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.flameTex, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-      sp.position.copy(pos).add(new THREE.Vector3((Math.random() - .5) * size * .3, (Math.random() - .5) * size * .3, (Math.random() - .5) * size * .3));
-      sp.scale.setScalar(size * 0.3);
-      this.scene.add(sp);
-      this.bursts.push({ sp, t: 0, life, size, grow: true });
+      const p = _bp.copy(pos).add(_bv.set((Math.random() - .5) * size * .3, (Math.random() - .5) * size * .3, (Math.random() - .5) * size * .3));
+      this.fire.emit(p, color, size * 0.3, size * 1.2, life, null);
     }
-    if (smoke) {
-      const sm = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.smokeTex, transparent: true, depthWrite: false }));
-      sm.position.copy(pos); sm.scale.setScalar(size * 0.5);
-      this.scene.add(sm);
-      this.bursts.push({ sp: sm, t: 0, life: life * 3, size: size * 1.6, grow: true, rise: 6 });
-    }
+    if (smoke) this.smoke.emit(pos, 0x5a5a5a, size * 0.5, size * 1.9, life * 3, _bv.set(0, 6, 0), 0.75);
   }
 
   puff(pos, color, size = 1.2, life = 1.2, vel = null) {
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.sparkTex, color, transparent: true, depthWrite: false }));
-    sp.position.copy(pos); sp.scale.setScalar(size);
-    this.scene.add(sp);
-    this.bursts.push({ sp, t: 0, life, size, vel });
+    this.smoke.emit(pos, color, size, size, life, vel, 1);
   }
 
-  updateBursts(dt) {
-    for (let i = this.bursts.length - 1; i >= 0; i--) {
-      const b = this.bursts[i];
-      b.t += dt;
-      const k = b.t / b.life;
-      if (k >= 1) { this.scene.remove(b.sp); b.sp.material.dispose(); this.bursts.splice(i, 1); continue; }
-      if (b.grow) b.sp.scale.setScalar(b.size * (0.3 + k * 0.9));
-      if (b.rise) b.sp.position.y += b.rise * dt;
-      if (b.vel) b.sp.position.addScaledVector(b.vel, dt);
-      b.sp.material.opacity = 1 - k;
-    }
-  }
-
-  // Persistent flame on a burning part.
-  setFlame(part, on) {
-    if (on && !this.flames.has(part)) {
-      if (this.flames.size > (this.game.lowGfx ? 70 : 160)) return;
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.flameTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-      const s = Math.min(10, Math.max(3, Math.max(part.size.x, part.size.z) * 0.9));
-      sp.userData.base = s;
-      sp.scale.set(s, s * 1.4, 1);
-      this.scene.add(sp);
-      this.flames.set(part, sp);
-    } else if (!on && this.flames.has(part)) {
-      const sp = this.flames.get(part);
-      this.scene.remove(sp); sp.material.dispose();
+  // Persistent flames on a part. level 1 = burning (hurts on touch),
+  // level 2 = small flames: the part is heating up and about to catch fire.
+  setFlame(part, level) {
+    level = level === true ? 1 : (level || 0);
+    // `burning` tracks every part on fire (touching it hurts) even when the sprite cap is hit
+    if (level === 1) this.burning.add(part); else this.burning.delete(part);
+    if (part.nid != null && (this.flameLevels.get(part) || 0) !== level) this.game.net?.onFlame(part, level);
+    if (level) this.flameLevels.set(part, level); else this.flameLevels.delete(part);
+    const cur = this.flames.get(part);
+    if (cur && (!level || cur.level !== level)) {
+      for (const sp of cur.sprites) { this.scene.remove(sp); sp.material.dispose(); }
       this.flames.delete(part);
     }
+    if (!level || this.flames.has(part)) return;
+    if (this.flames.size > (this.game.lowGfx ? 70 : 160)) return;
+    const base = Math.min(10, Math.max(3, Math.max(part.size.x, part.size.z) * 0.9)) * (level === 2 ? 0.35 : 1);
+    const n = level === 2 || this.game.lowGfx ? 1 : 3;
+    const sprites = [];
+    for (let i = 0; i < n; i++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.flameTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      sp.userData.base = base * (i ? 0.7 : 1);
+      sp.userData.off = new THREE.Vector3(i ? (Math.random() - .5) * part.size.x * 0.6 : 0, 0, i ? (Math.random() - .5) * part.size.z * 0.6 : 0);
+      sp.userData.ph = Math.random() * 10;
+      this.scene.add(sp);
+      sprites.push(sp);
+    }
+    this.flames.set(part, { level, sprites });
   }
+  flameLevel(part) { return this.flameLevels.get(part) || 0; }
 
   updateFlames() {
     const t = this.game.time;
-    for (const [part, sp] of this.flames) {
-      if (!part.alive) { this.setFlame(part, false); continue; }
+    for (const [part, f] of this.flames) {
+      if (!part.alive) { this.setFlame(part, 0); continue; }
       const p = part.body.translation();
-      sp.position.set(p.x, p.y + part.size.y / 2 + sp.userData.base * 0.4, p.z);
-      const f = 0.85 + Math.sin(t * 13 + part.id) * 0.12 + Math.random() * 0.06;
-      sp.scale.set(sp.userData.base * f, sp.userData.base * 1.4 * f, 1);
-      if (Math.random() < 0.02) this.puff(new THREE.Vector3(p.x, p.y + part.size.y / 2 + 3, p.z), 0x444444, 4, 2.5, new THREE.Vector3(0, 6, 0));
+      for (const sp of f.sprites) {
+        const b = sp.userData.base;
+        const k = 0.8 + Math.sin(t * 13 + part.id + sp.userData.ph) * 0.14 + Math.random() * 0.08;
+        sp.position.set(p.x + sp.userData.off.x, p.y + part.size.y / 2 + b * 0.45 * k, p.z + sp.userData.off.z);
+        sp.scale.set(b * k, b * 1.5 * k, 1);
+      }
+      if (f.level === 1 && Math.random() < 0.035) this.puff(new THREE.Vector3(p.x, p.y + part.size.y / 2 + 4, p.z), 0x3a3a3a, 5, 3, new THREE.Vector3((Math.random() - .5) * 2, 7, (Math.random() - .5) * 2));
     }
   }
 
-  lightning(from, to) {
-    const pts = [];
-    const n = 14;
-    for (let i = 0; i <= n; i++) {
-      const p = from.clone().lerp(to, i / n);
-      if (i > 0 && i < n) { p.x += (Math.random() - .5) * 8; p.z += (Math.random() - .5) * 8; }
-      pts.push(p);
-    }
-    const geo = new THREE.BufferGeometry().setFromPoints(pts);
-    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xeef4ff, transparent: true }));
-    const glow = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x9fc6ff, transparent: true, opacity: 0.5 }));
-    glow.scale.set(1.02, 1, 1.02);
-    this.scene.add(line, glow);
-    this.bolts.push({ objs: [line, glow], t: 0 });
-    this.flashT = 0.25;
+  // Lightning: a jagged bolt with a couple of side branches, drawn as thin glowing
+  // boxes so it reads at any distance, plus a sky flash.
+  lightning(from, to, color = 0xfff27a) {
+    const objs = [];
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, fog: false });
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0xffffc8, transparent: true, opacity: 0.35, fog: false, depthWrite: false });
+    const seg = (a, b, w) => {
+      const len = a.distanceTo(b);
+      const m = new THREE.Mesh(this.boltGeo, mat);
+      m.position.copy(a).add(b).multiplyScalar(0.5);
+      m.scale.set(w, len, w);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+      const gl = new THREE.Mesh(this.boltGeo, glowMat);
+      gl.position.copy(m.position); gl.quaternion.copy(m.quaternion); gl.scale.set(w * 4, len, w * 4);
+      this.scene.add(m, gl);
+      objs.push(m, gl);
+    };
+    const path = (a, b, n, jag, w, branches) => {
+      let prev = a;
+      for (let i = 1; i <= n; i++) {
+        const p = a.clone().lerp(b, i / n);
+        if (i < n) { p.x += (Math.random() - .5) * jag; p.z += (Math.random() - .5) * jag; p.y += (Math.random() - .5) * jag * 0.3; }
+        seg(prev, p, w);
+        if (branches && i > 2 && i < n - 2 && Math.random() < 0.25) {
+          const end = p.clone().add(new THREE.Vector3((Math.random() - .5) * 40, -20 - Math.random() * 40, (Math.random() - .5) * 40));
+          path(p, end, 5, jag * 0.6, w * 0.5, false);
+        }
+        prev = p;
+      }
+    };
+    path(from, to, 16, 14, 0.7, true);
+    this.bolts.push({ objs, mats: [mat, glowMat], t: 0 });
+    this.flashT = 0.3;
+  }
+
+  // dark mark left on the ground by impacts (meteors, lightning, lava)
+  scorch(pos, r = 4) {
+    const m = new THREE.Mesh(this.scorchGeo, new THREE.MeshBasicMaterial({ map: this.scorchTex, transparent: true, depthWrite: false, opacity: 0.85 }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(pos.x, pos.y + 0.06, pos.z);
+    m.scale.setScalar(r * 2);
+    m.renderOrder = 1;
+    this.scene.add(m);
+    this.scorches.push({ m, t: 0 });
+    if (this.scorches.length > 80) { const o = this.scorches.shift(); this.scene.remove(o.m); o.m.material.dispose(); }
   }
 
   update(dt) {
@@ -267,8 +373,14 @@ export class Effects {
     for (let i = this.bolts.length - 1; i >= 0; i--) {
       const b = this.bolts[i];
       b.t += dt;
-      for (const o of b.objs) o.material.opacity = Math.max(0, 1 - b.t / 0.35) * (Math.random() < 0.3 ? 0.3 : 1);
-      if (b.t > 0.35) { for (const o of b.objs) { this.scene.remove(o); o.geometry.dispose(); } this.bolts.splice(i, 1); }
+      const f = Math.max(0, 1 - b.t / 0.45) * (Math.random() < 0.3 ? 0.35 : 1);
+      b.mats[0].opacity = f; b.mats[1].opacity = f * 0.35;
+      if (b.t > 0.45) { for (const o of b.objs) this.scene.remove(o); for (const m of b.mats) m.dispose(); this.bolts.splice(i, 1); }
+    }
+    for (let i = this.scorches.length - 1; i >= 0; i--) {
+      const s = this.scorches[i];
+      s.t += dt;
+      if (s.t > 40) { s.m.material.opacity = Math.max(0, 0.85 - (s.t - 40) / 8); if (s.t > 48) { this.scene.remove(s.m); s.m.material.dispose(); this.scorches.splice(i, 1); } }
     }
     const cam = this.game.camera.position;
     this.sky.position.copy(cam);
@@ -279,13 +391,18 @@ export class Effects {
     this.sun.position.copy(focus).addScaledVector(this.sunDir, 350);
     this.sun.target.position.copy(focus);
     this.updateWeather(dt);
-    this.updateBursts(dt);
+    this.fire.update(dt, this.game.camera);
+    this.smoke.update(dt, this.game.camera);
     this.updateFlames();
   }
 
   reset() {
     for (const k of Object.keys(this.weather)) this.setWeather(k, false);
-    for (const p of [...this.flames.keys()]) this.setFlame(p, false);
+    for (const p of [...this.flames.keys()]) this.setFlame(p, 0);
+    this.flameLevels.clear();
+    this.burning.clear();
+    for (const s of this.scorches) { this.scene.remove(s.m); s.m.material.dispose(); }
+    this.scorches = [];
     this.setSky('clear');
   }
 }

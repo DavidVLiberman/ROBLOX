@@ -329,3 +329,14 @@ body.hub-open #chat, body.hub-open #playerlist, body.hub-open #backpack, body.hu
   #messages, #warnings { top: 108px; }
   #playerlist { top: 108px; }
 }
+
+/* bubble chat: typing indicator and the far-away "..." bubble (MinimizeDistance) */
+.bubble.typing { display: flex; gap: 5px; padding: 11px 12px; }
+.bubble.typing i { width: 7px; height: 7px; border-radius: 50%; background: rgb(57, 59, 61); opacity: .3; animation: typingDot 1.2s infinite ease-in-out; }
+.bubble.typing i:nth-child(2) { animation-delay: .2s; }
+.bubble.typing i:nth-child(3) { animation-delay: .4s; }
+@keyframes typingDot { 0%, 60%, 100% { opacity: .3; transform: translateY(0); } 30% { opacity: .9; transform: translateY(-2px); } }
+.bubble.mini { display: none; padding: 2px 12px; font-weight: 700; }
+.bstack.far .bubble { display: none; }
+.bstack.far .bubble.mini { display: block; }
+#chat-log .msg.whisper .nm { font-style: italic; }

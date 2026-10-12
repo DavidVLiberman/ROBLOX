@@ -1,33 +1,38 @@
 import { OCEAN_LEVEL, clamp } from '../util.js';
-import { mapParts } from './common.js';
+import { mapParts, isHost } from './common.js';
 
+// The ocean rises over most of the map, then keeps surging around its peak.
+// Submerged bricks work loose; players only drown once the water is over their heads.
 export default {
   name: 'Flash Flood',
   warning: 'Flash Flood! Seek high and stable ground',
-  icon: '🌊',
   duration: 60,
-  sky: 'dark',
   bot: 'high',
+  params(g) { return { target: clamp(g.map.tallest * 0.45, 12, 40) }; },
   preWarn(g) {
     g.effects.setSky('dark');
     g.audio.loop('wind', true, { freq: 400, gain: 0.08, lfo: 0.2 });
   },
   start(g, st) {
-    st.t = 0; st.tick = 0;
-    st.target = clamp(g.map.tallest * 0.45, 12, 40);
+    st.t = st.late || 0; st.tick = 0;
+    st.target = st.p.target ?? 20;
+    g.effects.setSky('dark');
     g.effects.setWeather('rain', true);
     g.audio.loop('rain', true, { filter: 'highpass', freq: 2500, gain: 0.18 });
     g.audio.loop('water', true, { type: 'brown', freq: 350, gain: 0.25 });
   },
   update(g, st, dt) {
     st.t += dt;
-    const k = clamp(st.t / (this.duration * 0.8), 0, 1);
-    const level = OCEAN_LEVEL + (st.target - OCEAN_LEVEL) * (k * k * (3 - 2 * k));
+    const rise = this.duration * 0.7;
+    const k = clamp(st.t / rise, 0, 1);
+    let level = OCEAN_LEVEL + (st.target - OCEAN_LEVEL) * (k * k * (3 - 2 * k));
+    if (k >= 1) level += Math.sin((st.t - rise) * 0.9) * 0.9 + Math.sin(st.t * 0.37) * 0.5;
     g.setWaterLevel(level);
+    if (!isHost(g)) return;
     st.tick += dt;
     if (st.tick > 0.5) {
       st.tick = 0;
-      // submerged parts corrode, shake and break loose
+      // submerged bricks are weakened and break loose
       for (const p of mapParts(g)) {
         if (!p.anchored) continue;
         const t = p.body.translation();

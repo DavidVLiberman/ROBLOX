@@ -8,7 +8,7 @@ import { TOWER } from './island.js';
 export const BOT_NAMES = [
   'Guest 1337', 'xXNoobSlayerXx', 'builderkid2008', 'CoolDude_42', 'Guest 8821', 'PizzaLover9000', 'blox_master', 'SurvivorPro',
   'tornado_chaser', 'Guest 4096', 'oofmaster', 'LavaWalker', 'iSurviveEverything', 'brickbuilder77', 'StormRunner', 'CaptainNoob',
-  'GamerGirl_2012', 'TsunamiSurfer', 'kitty_cat_33', 'MeteorDodger', 'Guest 6060', 'cheesyfries', 'xX_Disaster_Xx', 'NotABot_Trust',
+  'GamerGirl_2012', 'TsunamiSurfer', 'kitty_cat_33', 'MeteorDodger', 'Guest 6060', 'cheesyfries', 'xX_Disaster_Xx', 'NoobDefender',
 ];
 
 const SHIRTS = [BC.brightRed, BC.brightGreen, BC.white, BC.black, BC.brightOrange, BC.mauve, BC.pastelBlue, BC.brightYellow, BC.navy, BC.pink];
@@ -183,7 +183,7 @@ const LINES = {
 };
 
 export function botChat(game, event, who = null) {
-  const bots = game.chars.filter(c => !c.isPlayer);
+  const bots = game.bots;
   if (!bots.length) return;
   const lines = LINES[event];
   if (!lines) return;
@@ -192,4 +192,34 @@ export function botChat(game, event, who = null) {
   const pool = event === 'survived' ? bots.filter(c => c.alive && c.inRound) : bots.filter(c => c.alive);
   const n = event === 'idle' ? 1 : Math.min(pool.length, 1 + Math.floor(rand() * 2.5));
   for (let i = 0; i < n; i++) if (pool.length) queue(pick(pool), 0.6 + rand() * 3);
+}
+
+// Bots answer people in chat now and then (greetings, gg, lol, questions).
+const REPLIES = [
+  [/\b(hi+|hey+|hello+|yo|sup|hai)\b/i, ['hi', 'hey', 'hello', 'yo', 'hii', 'sup'], 2],
+  [/\b(gg|good game|ggs)\b/i, ['gg', 'gg!', 'ggs', 'gg wp'], 2],
+  [/\b(lol|lmao|haha+|xd)\b/i, ['lol', 'lmao', 'xD', 'haha'], 1],
+  [/\b(what|which|next) (map|disaster)\b/i, ['idk', 'hopefully not tsunami', 'i hope its flood', 'fire probably lol'], 1],
+  [/\b(team|teams|follow me)\b/i, ['ok', 'sure', 'no thanks', 'ok wait for me'], 1],
+  [/\bnoob\b/i, ['no u', 'hey!', 'ur the noob lol'], 1],
+  [/\b(bye|gtg|cya)\b/i, ['bye', 'cya', 'bye!'], 1],
+  [/\b(how|help)\b/i, ['read the warning', 'get high when its a flood', 'go inside for meteors'], 1],
+  [/\?\s*$/, ['idk', 'yes', 'no', 'maybe', 'idk lol'], 1],
+];
+
+export function botReply(game, from, text) {
+  const bots = game.bots.filter(b => b.alive && b !== from);
+  if (!bots.length) return;
+  // mentioning a bot by name gets its attention
+  const named = bots.find(b => text.toLowerCase().includes(b.name.toLowerCase().slice(0, 6)));
+  for (const [re, lines, max] of REPLIES) {
+    if (!re.test(text)) continue;
+    const n = named ? 1 : Math.min(bots.length, rand() < 0.55 ? 1 + Math.floor(rand() * max) : 0);
+    for (let i = 0; i < n; i++) {
+      const c = named || pick(bots);
+      game.chatQueue.push({ at: game.time + 1.2 + rand() * 2.5 + i * 1.3, char: c, text: pick(lines) });
+    }
+    return;
+  }
+  if (named && rand() < 0.7) game.chatQueue.push({ at: game.time + 1.5 + rand() * 2, char: named, text: pick(['what', 'yes?', 'hi', 'huh']) });
 }

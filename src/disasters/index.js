@@ -1,5 +1,11 @@
 // One module per disaster, all with the same interface:
-// { name, warning, icon, duration, preWarn?(g, st), start(g, st), update(g, st, dt), stop(g, st), bot }
+// { name, warning, duration, bot,
+//   params?(g)          host only: random choices shared with every player (directions, spots)
+//   preWarn?(g, st)     weather hint before the warning
+//   start(g, st), update(g, st, dt), stop(g, st)   run on every machine (st.p = params)
+//   onEvent?(g, st, ev)                            a decided event (meteor, strike, cough...)
+//   netState?(st) / applyNetState?(g, st, s)       continuous state streamed by the host
+//   promote?(g, st)     this machine became the host in the middle of the disaster }
 import flood from './flood.js';
 import tsunami from './tsunami.js';
 import meteor from './meteor.js';

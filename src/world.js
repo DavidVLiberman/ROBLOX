@@ -137,6 +137,18 @@ export class World {
     this.maxDebris = 650;
     this.time = 0;
     this.onPartRemoved = null;
+    // multiplayer: the host owns every map brick (onMutate reports changes to it);
+    // on other players' machines the bricks are replicas moved by the host's stream
+    this.replica = false;
+    this.onMutate = null;
+    this.byNid = new Map();
+    this.replicas = new Set();
+  }
+
+  // Give map parts network ids in build order (identical on every machine).
+  assignNids(parts) {
+    this.byNid.clear();
+    parts.forEach((p, i) => { p.nid = i; this.byNid.set(i, p); });
   }
 
   pool(shape, mat) {
@@ -247,9 +259,19 @@ export class World {
     return mesh;
   }
 
-  setColor(part, color) {
+  setColor(part, color, force = false) {
+    if (this.replica && part.nid != null && !force) return;
     part.color.set(color);
     part.pool.color(part.inst, part.color);
+    if (this.onMutate && part.nid != null) this.onMutate('c', part, part.color.getHex());
+  }
+
+  // A tag other players need to know about (e.g. 'acidic' bricks hurt on touch).
+  addNetTag(part, tag) {
+    if (!part.alive || part.tags.has(tag)) return;
+    part.tags.add(tag);
+    (part.netTags ||= new Set()).add(tag);
+    if (this.onMutate && part.nid != null) this.onMutate('t', part, tag);
   }
 
   // Teleport an anchored part (used for animated rising volcano / vehicles).
@@ -261,6 +283,7 @@ export class World {
 
   unanchor(part, vel) {
     if (!part.alive) return false;
+    if (this.replica && part.nid != null) return false;
     if (part.anchored) {
       if (part.tags.has('indestructible')) return false;
       part.anchored = false;
@@ -269,6 +292,7 @@ export class World {
       this.dynamic.add(part);
       this.supportDirty = true;
       if (part.onUnanchor) part.onUnanchor(part);
+      if (this.onMutate && part.nid != null) this.onMutate('u', part);
     }
     if (vel) {
       part.body.setLinvel({ x: vel.x, y: vel.y, z: vel.z }, true);
@@ -286,9 +310,13 @@ export class World {
     } else part.body.setLinvel({ x: vel.x, y: vel.y, z: vel.z }, true);
   }
 
-  removePart(part) {
+  removePart(part, force = false) {
     if (!part.alive) return;
+    if (this.replica && part.nid != null && !force) return;
     part.alive = false;
+    if (this.onMutate && part.nid != null) this.onMutate('r', part);
+    this.replicas.delete(part);
+    if (part.nid != null && this.byNid.get(part.nid) === part) this.byNid.delete(part.nid);
     if (part.anchored && !part.tags.has('indestructible')) this.supportDirty = true;
     this.byCollider.delete(part.collider.handle);
     this.physics.removeRigidBody(part.body);
@@ -353,6 +381,49 @@ export class World {
     return fell;
   }
 
+  // ---------- replicas (non-host machines) ----------
+  // The host unanchored this brick: here it becomes a kinematic body that
+  // follows the host's transform stream.
+  makeReplica(part, unanchored = true) {
+    if (!part.alive) return;
+    if (unanchored && part.anchored) { part.anchored = false; part.unanchoredAt = this.time; }
+    if (!this.replicas.has(part)) {
+      part.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
+      part.samples = [];
+      part.netVel = new THREE.Vector3();
+      this.replicas.add(part);
+    }
+  }
+
+  addSample(part, t, x, y, z, qx, qy, qz, qw) {
+    if (!part.alive) return;
+    if (!this.replicas.has(part)) this.makeReplica(part, false);
+    const s = part.samples;
+    s.push({ t, x, y, z, q: new THREE.Quaternion(qx, qy, qz, qw).normalize() });
+    if (s.length > 8) s.shift();
+  }
+
+  // Interpolate every replica ~110 ms in the past so motion stays smooth.
+  stepReplicas(now, dt) {
+    const rt = now - 110;
+    for (const p of this.replicas) {
+      const s = p.samples;
+      if (!s || !s.length) continue;
+      let a = s[0], b = s[0];
+      for (let i = 0; i < s.length; i++) { if (s[i].t <= rt) a = s[i]; if (s[i].t >= rt) { b = s[i]; break; } b = s[i]; }
+      const k = b.t > a.t ? clamp((rt - a.t) / (b.t - a.t), 0, 1) : 1;
+      const old = p.body.translation();
+      _p.set(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k);
+      _q.copy(a.q).slerp(b.q, k);
+      p.body.setNextKinematicTranslation({ x: _p.x, y: _p.y, z: _p.z });
+      p.body.setNextKinematicRotation({ x: _q.x, y: _q.y, z: _q.z, w: _q.w });
+      const d = { x: _p.x - old.x, y: _p.y - old.y, z: _p.z - old.z };
+      p.netVel.set(d.x / dt, d.y / dt, d.z / dt);
+      p.lastDelta = Math.abs(d.x) + Math.abs(d.y) + Math.abs(d.z) > 1e-4 ? d : null;
+      p._moved = true;
+    }
+  }
+
   raycast(origin, dir, maxDist, opts = {}) {
     const ray = new RAPIER.Ray({ x: origin.x, y: origin.y, z: origin.z }, { x: dir.x, y: dir.y, z: dir.z });
     const hit = this.physics.castRayAndGetNormal(ray, maxDist, true, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS,
@@ -390,7 +461,9 @@ export class World {
   // After physics: copy dynamic transforms into instance buffers, cull debris.
   sync(dt) {
     const kill = [];
+    for (const p of this.replicas) this.syncPart(p);
     for (const p of this.dynamic) {
+      if (this.replicas.has(p)) continue;
       const t = p.body.translation();
       if (t.y < -60 || Math.abs(t.x) > 900 || Math.abs(t.z) > 900) { kill.push(p); continue; }
       if (p.lifetime && this.time - p.created > p.lifetime) { kill.push(p); continue; }

@@ -1,9 +1,14 @@
 // Humanoid: kinematic capsule driven by Rapier's character controller.
-// Shared by the local player and the bots.
+// Shared by the local player and the bots. Other people's characters are
+// "remote": they are not simulated here, they follow the owner's reports.
 import * as THREE from 'three';
 import { RAPIER, IG_CHAR } from './world.js';
 import { Avatar, NOOB_COLORS } from './avatar.js';
 import { GRAVITY, WALK_SPEED, JUMP_POWER, MAX_HEALTH, clamp } from './util.js';
+
+export const STATES = ['idle', 'walk', 'jump', 'fall', 'climb', 'swim', 'sit'];
+export const TOOL_IDS = [null, 'balloon', 'apple', 'hammer', 'compass'];
+export const EMOTES = [null, 'dance', 'dance2', 'dance3', 'wave', 'point', 'cheer', 'laugh'];
 
 const HALF = 2.5; // capsule centre above feet
 let sharedKCC = null;
@@ -11,7 +16,9 @@ let sharedKCC = null;
 // crowds at spawn never lock anyone in place.
 const QUERY_GROUPS = ((0xffff) << 16) | 0x0001;
 const COYOTE = 0.12;      // seconds after walking off a ledge that a jump still works
-const CLIMB_SPEED = 12;   // studs/s, about WalkSpeed * 0.75 like Roblox ladders
+const CLIMB_SPEED = 11.2; // Roblox: Humanoids climb at 70% of WalkSpeed
+const GRAB = 1.45;        // how close (studs from the capsule axis) a truss must be to grab it
+const REMOTE_DELAY = 120; // ms: remote characters are drawn slightly in the past for smoothness
 
 export class Character {
   constructor(game, { name, isPlayer = false, colors = NOOB_COLORS, userId = 0 }) {
@@ -47,6 +54,13 @@ export class Character {
     this.infected = false;
     this.speedMul = 1;
     this.lastInput = 0;
+    this.climbing = null;               // truss part we hold on to
+    this.climbV = 0;
+    this.climbCd = 0;
+    this.emote = null;
+    this.swings = 0;
+    this.remote = false;
+    this.samples = [];
     const w = game.world;
     this.body = w.physics.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -500, 0));
     this.collider = w.physics.createCollider(
@@ -70,6 +84,7 @@ export class Character {
 
   get head() { return new THREE.Vector3(this.pos.x, this.pos.y + 4.6, this.pos.z); }
   get center() { return new THREE.Vector3(this.pos.x, this.pos.y + HALF, this.pos.z); }
+  get local() { return !this.remote; }
 
   spawn(pos, yaw = 0) {
     this.alive = true;
@@ -78,6 +93,8 @@ export class Character {
     this.infected = false;
     this.vel.set(0, 0, 0); this.ext.set(0, 0, 0);
     this.seat = null;
+    this.climbing = null;
+    this.emote = null;
     this.yaw = yaw;
     this.minHealthThisRound = this.maxHealth;
     this.teleport(pos);
@@ -92,13 +109,20 @@ export class Character {
   }
 
   teleport(pos) {
-    this.pos.copy(pos);
-    this.prevPos.copy(pos);
+    this.pos.set(pos.x, pos.y, pos.z);
+    this.prevPos.copy(this.pos);
     this.vel.set(0, 0, 0); this.ext.set(0, 0, 0);
     if (this.seat) this.seat.occupant = null;
     this.seat = null;
+    this.climbing = null;
     this.body.setTranslation({ x: pos.x, y: pos.y + HALF, z: pos.z }, true);
     this.body.setNextKinematicTranslation({ x: pos.x, y: pos.y + HALF, z: pos.z });
+  }
+
+  // /e emotes: dances loop until you move, the others play once
+  setEmote(e) {
+    this.emote = e;
+    this.emoteUntil = ['wave', 'point', 'cheer', 'laugh'].includes(e) ? this.game.time + 2.6 : 0;
   }
 
   equip(kind) {
@@ -108,16 +132,17 @@ export class Character {
   }
 
   addVelocity(v) {
+    if (this.remote) return;
     this.vel.y += v.y;
     this.ext.x += v.x; this.ext.z += v.z;
-    if (v.y > 5) this.grounded = false;
+    if (v.y > 5) { this.grounded = false; this.climbing = null; }
     if (this.seat && (Math.abs(v.x) + Math.abs(v.z) + Math.abs(v.y) > 30)) this.unsit();
   }
 
   // env: environmental damage (acid, cold, virus, water) does not hurt
   // spectators who walk back onto the island.
   damage(amount, cause = 'unknown', env = false) {
-    if (!this.alive || amount <= 0) return;
+    if (!this.alive || amount <= 0 || this.remote) return;
     if (env && !this.inRound) return;
     if (this.game.godMode && this.isPlayer) return;
     this.health = Math.max(0, this.health - amount);
@@ -133,7 +158,7 @@ export class Character {
   }
 
   heal(n) {
-    if (!this.alive) return;
+    if (!this.alive || this.remote) return;
     this.health = Math.min(this.maxHealth, this.health + n);
     this.avatar.drawTag(this.health / this.maxHealth);
   }
@@ -146,7 +171,9 @@ export class Character {
     this.inRound = false;
     if (this.seat) this.seat.occupant = null;
     this.seat = null;
+    this.climbing = null;
     this.infected = false;
+    this.emote = null;
     // R6 death: the body falls apart into its six pieces.
     const w = this.game.world;
     for (const l of this.avatar.limbs()) {
@@ -158,7 +185,7 @@ export class Character {
     this.teleportHidden();
     this.game.audio?.oof(this.isPlayer ? null : this.pos);
     this.game.onDeath?.(this, cause, wasInRound);
-    this.respawnAt = this.game.time + 5;
+    this.respawnAt = this.remote ? 0 : this.game.time + 5;
   }
 
   teleportHidden() {
@@ -170,6 +197,8 @@ export class Character {
     this.seat = seatPart;
     seatPart.occupant = this;
     this.vel.set(0, 0, 0); this.ext.set(0, 0, 0);
+    this.climbing = null;
+    this.emote = null;
     this.game.onSit?.(this, seatPart);
   }
 
@@ -185,6 +214,7 @@ export class Character {
 
   // ---------- fixed-step physics ----------
   step(dt) {
+    if (this.remote) return this.stepRemote();
     if (!this.alive) {
       if (this.respawnAt && this.game.time >= this.respawnAt) { this.respawnAt = 0; this.game.respawn(this); }
       return;
@@ -210,37 +240,45 @@ export class Character {
     const centerY = this.pos.y + HALF;
     const swimming = centerY < water;
     this.swimming = swimming;
-    const climbing = this.checkClimb();
+    const mlen = Math.hypot(this.move.x, this.move.z);
+    if (mlen > 0.1 || this.jump || (this.emoteUntil && game.time > this.emoteUntil)) { this.emote = null; this.emoteUntil = 0; }
     const g = GRAVITY * this.gravityScale;
     const speed = WALK_SPEED * this.speedMul * (swimming ? 0.8 : 1);
 
-    if (climbing) {
-      this.vel.y = CLIMB_SPEED;
-    } else if (swimming) {
-      const target = this.jump ? 16 : (centerY < water - 1.2 ? 9 : -1);
-      this.vel.y += (target - this.vel.y) * Math.min(1, dt * 5);
-      if (this.jump && centerY > water - 1.5) this.vel.y = Math.max(this.vel.y, 26);
+    const climb = this.updateClimb(dt, mlen);
+    let dx, dz;
+    if (climb) {
+      // on a truss: forward climbs, back climbs down, sideways shuffles along it,
+      // no input holds on (Roblox characters never slide off a truss)
+      this.vel.y = this.climbV;
+      dx = (climb.side.x * climb.lateral * speed * 0.5 + climb.n.x * 3 + this.ext.x * 0.2) * dt;
+      dz = (climb.side.z * climb.lateral * speed * 0.5 + climb.n.z * 3 + this.ext.z * 0.2) * dt;
     } else {
-      this.vel.y -= g * dt;
-      if (this.vel.y < -250) this.vel.y = -250;
+      if (swimming) {
+        const target = this.jump ? 16 : (centerY < water - 1.2 ? 9 : -1);
+        this.vel.y += (target - this.vel.y) * Math.min(1, dt * 5);
+        if (this.jump && centerY > water - 1.5) this.vel.y = Math.max(this.vel.y, 26);
+      } else {
+        this.vel.y -= g * dt;
+        if (this.vel.y < -250) this.vel.y = -250;
+      }
+      const canJump = this.grounded || game.time - this.lastGrounded < COYOTE;
+      if (this.jump && canJump && !swimming && this.vel.y <= 1 && game.time - (this.jumpedAt || 0) > 0.2) {
+        this.vel.y = JUMP_POWER;
+        this.grounded = false;
+        this.lastGrounded = -1;
+        this.jumpedAt = game.time;
+      }
+      dx = (this.move.x * speed + this.ext.x) * dt;
+      dz = (this.move.z * speed + this.ext.z) * dt;
     }
-    const canJump = this.grounded || game.time - this.lastGrounded < COYOTE;
-    if (this.jump && canJump && !swimming && !climbing && this.vel.y <= 1 && game.time - (this.jumpedAt || 0) > 0.2) {
-      this.vel.y = JUMP_POWER;
-      this.grounded = false;
-      this.lastGrounded = -1;
-      this.jumpedAt = game.time;
-    }
-
-    const dx = (this.move.x * speed + this.ext.x) * dt;
-    const dz = (this.move.z * speed + this.ext.z) * dt;
     const dy = this.vel.y * dt;
     this.kcc.computeColliderMovement(this.collider, { x: dx, y: dy, z: dz }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, QUERY_GROUPS);
     const mv = this.kcc.computedMovement();
     const wasGrounded = this.grounded;
     this.grounded = this.kcc.computedGrounded();
     // grounded can flicker on edges and stairs: confirm with a short probe
-    if (!this.grounded && this.vel.y <= 0 && !climbing) {
+    if (!this.grounded && this.vel.y <= 0 && !climb) {
       const probe = game.world.raycast({ x: this.pos.x + mv.x, y: this.pos.y + mv.y + 0.6, z: this.pos.z + mv.z }, { x: 0, y: -1, z: 0 }, 1.0);
       if (probe) this.grounded = true;
     }
@@ -249,7 +287,8 @@ export class Character {
       // landing impact: Roblox has no fall damage, keep it that way
       this.vel.y = -0.5;
     }
-    if (this.vel.y > 0 && dy > 0 && mv.y < dy * 0.25) this.vel.y = 0; // bonked head
+    if (climb && this.grounded && this.climbV < 0) this.climbing = null;   // climbed back down
+    if (this.vel.y > 0 && dy > 0 && mv.y < dy * 0.25 && !climb) this.vel.y = 0; // bonked head
     if (!this.grounded && wasGrounded && this.vel.y <= 0) this.vel.y = Math.min(this.vel.y, 0);
     // ride moving platforms (vehicles, rocket, rising volcano)
     if (this.groundPart && this.groundPart.alive && this.groundPart.anchored && this.groundPart.lastDelta) {
@@ -264,9 +303,12 @@ export class Character {
     if (Math.abs(mv.x) < Math.abs(dx) * 0.3) this.ext.x *= 0.5;
     if (Math.abs(mv.z) < Math.abs(dz) * 0.3) this.ext.z *= 0.5;
 
-    // facing
-    const mlen = Math.hypot(this.move.x, this.move.z);
-    if (this.faceYaw !== null) this.yaw = this.faceYaw;
+    // facing: climbers face the truss
+    if (climb) {
+      const target = Math.atan2(climb.n.x, climb.n.z);
+      let d = target - this.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
+      this.yaw += d * Math.min(1, dt * 14);
+    } else if (this.faceYaw !== null) this.yaw = this.faceYaw;
     else if (mlen > 0.1) {
       const target = Math.atan2(this.move.x, this.move.z);
       let d = target - this.yaw;
@@ -281,7 +323,8 @@ export class Character {
       if (hit && hit.object && hit.object.size) this.groundPart = hit.object;
     }
 
-    // characters push each other instead of blocking (griefers still shove people off ledges)
+    // characters push each other instead of blocking: everyone moves themselves out of
+    // overlaps, and walking into a character you simulate shoves them
     for (const o of game.chars) {
       if (o === this || !o.alive || o.seat) continue;
       if (Math.abs(o.pos.y - this.pos.y) > 4.5) continue;
@@ -291,12 +334,12 @@ export class Character {
       const d = Math.sqrt(d2) || 0.01;
       const nx = d2 > 1e-4 ? ox / d : Math.random() - .5, nz = d2 > 1e-4 ? oz / d : Math.random() - .5;
       const overlap = 2.1 - d;
-      o.ext.x += nx * overlap * 18 * dt; o.ext.z += nz * overlap * 18 * dt;
-      if (mlen > 0.2 && (nx * this.move.x + nz * this.move.z) > 0) { o.ext.x += this.move.x * 26 * dt; o.ext.z += this.move.z * 26 * dt; }
+      this.ext.x -= nx * overlap * 18 * dt; this.ext.z -= nz * overlap * 18 * dt;
+      if (o.local && mlen > 0.2 && (nx * this.move.x + nz * this.move.z) > 0) { o.ext.x += this.move.x * 26 * dt; o.ext.z += this.move.z * 26 * dt; }
     }
 
     // seats
-    if (!this.seat && game.time - this.unsitTime > 1.2 && this.vel.y <= 0) {
+    if (!this.seat && game.time - this.unsitTime > 1.2 && this.vel.y <= 0 && !climb) {
       for (const s of game.seats) {
         if (!s.alive || !s.anchored || s.occupant) continue;
         const t = s.body.translation();
@@ -311,28 +354,145 @@ export class Character {
 
     // animation state
     const hs = Math.hypot(mv.x, mv.z) / dt;
-    this.hSpeed = hs;
-    if (climbing) this.state = 'climb';
+    this.hSpeed = climb ? Math.abs(this.climbV) + Math.abs(climb.lateral) * 4 : hs;
+    if (climb) this.state = 'climb';
     else if (swimming) this.state = 'swim';
     else if (!this.grounded) this.state = this.vel.y > 0 ? 'jump' : 'fall';
     else if (hs > 1.5 && mlen > 0.1) this.state = 'walk';
     else this.state = 'idle';
   }
 
-  checkClimb() {
-    const mlen = Math.hypot(this.move.x, this.move.z);
-    this.climbMove = mlen;
-    if (mlen < 0.1) return false;
+  // Nearest climbable truss within reach: closest point, direction to it, distance.
+  nearestTruss() {
+    let best = null;
     for (const t of this.game.trusses) {
       if (!t.alive || !t.anchored) continue;
       const b = this.game.world.aabb(t);
-      if (this.pos.x + 1.6 < b.minX || this.pos.x - 1.6 > b.maxX || this.pos.z + 1.6 < b.minZ || this.pos.z - 1.6 > b.maxZ) continue;
-      if (this.pos.y > b.maxY - 0.1 || this.pos.y + 5 < b.minY) continue;
+      if (this.pos.x + 3 < b.minX || this.pos.x - 3 > b.maxX || this.pos.z + 3 < b.minZ || this.pos.z - 3 > b.maxZ) continue;
+      if (this.pos.y > b.maxY + 0.05 || this.pos.y + 5 < b.minY) continue;
       const cx = clamp(this.pos.x, b.minX, b.maxX) - this.pos.x, cz = clamp(this.pos.z, b.minZ, b.maxZ) - this.pos.z;
-      const cl = Math.hypot(cx, cz);
-      if (cl < 0.01 || (cx * this.move.x + cz * this.move.z) / cl / mlen > 0.3) return true;
+      const dist = Math.hypot(cx, cz);
+      if (dist > GRAB + 0.6) continue;
+      if (!best || dist < best.dist) {
+        // inside the truss footprint (shouldn't happen): face its centre
+        const n = dist > 0.01 ? new THREE.Vector3(cx / dist, 0, cz / dist)
+          : new THREE.Vector3((b.minX + b.maxX) / 2 - this.pos.x, 0, (b.minZ + b.maxZ) / 2 - this.pos.z).normalize();
+        best = { t, b, dist, n };
+      }
     }
-    return false;
+    return best;
+  }
+
+  // Truss climbing like a Roblox Humanoid. Returns climb info or null.
+  updateClimb(dt, mlen) {
+    this.climbCd -= dt;
+    if (!this.climbing) this.climbV = 0;
+    if (this.climbCd > 0) { this.climbing = null; return null; }
+    const tr = this.nearestTruss();
+    if (!tr) { this.climbing = null; return null; }
+    const toward = mlen > 0.05 ? (this.move.x * tr.n.x + this.move.z * tr.n.z) : 0;
+    const side = new THREE.Vector3(-tr.n.z, 0, tr.n.x);
+    const lateral = mlen > 0.05 ? this.move.x * side.x + this.move.z * side.z : 0;
+    if (!this.climbing) {
+      // grab it by walking (or jumping) into it
+      if (tr.dist > GRAB || toward < 0.35 || this.pos.y > tr.b.maxY - 0.6) return null;
+      this.climbing = tr.t;
+    } else if (tr.t !== this.climbing && tr.dist > GRAB) { this.climbing = null; return null; }
+    if (tr.dist > GRAB + 0.5) { this.climbing = null; return null; }
+    // jumping lets go and kicks off backwards
+    if (this.jump && this.game.time - (this.jumpedAt || 0) > 0.25) {
+      this.climbing = null; this.climbCd = 0.35;
+      this.jumpedAt = this.game.time;
+      this.vel.y = JUMP_POWER * 0.7;
+      this.ext.x -= tr.n.x * 22; this.ext.z -= tr.n.z * 22;
+      return null;
+    }
+    // over the top: pull up onto the ledge
+    if (this.pos.y >= tr.b.maxY - 0.25 && toward > -0.2) {
+      this.climbing = null; this.climbCd = 0.4;
+      this.vel.y = 22;
+      this.ext.x += tr.n.x * 14; this.ext.z += tr.n.z * 14;
+      return null;
+    }
+    const k = Math.abs(toward) < 0.2 ? 0 : clamp(toward / 0.7, -1, 1);
+    // speed ramps like the Humanoid's climbing (no instant snap)
+    this.climbV += (CLIMB_SPEED * k * this.speedMul - this.climbV) * Math.min(1, dt * 14);
+    return { n: tr.n, side, lateral: Math.abs(lateral) > 0.3 ? lateral : 0 };
+  }
+
+  // ---------- remote characters ----------
+  // s = [eid, x, y, z, yaw, state, speed, health, flags, tool, emote, seatNid, swings, coldLevel]
+  netState(now, s) {
+    const [, x, y, z, yaw, st, hs, hp, fl, tool, emote, seatNid, swings, cold] = s;
+    const alive = !!(fl & 1);
+    if (alive && !this.alive) {
+      this.alive = true;
+      this.samples.length = 0;
+      this.pos.set(x, y, z); this.yaw = yaw;
+      this.avatar.setVisible(true);
+      this.avatar.hold(this.equipped);
+    } else if (!alive && this.alive) this.netDie('unknown');
+    if (!alive) return;
+    // teleported (into the map, back to the lobby): snap instead of sliding across
+    const last = this.samples[this.samples.length - 1];
+    if (last && Math.abs(last.x - x) + Math.abs(last.y - y) + Math.abs(last.z - z) > 40) this.samples.length = 0;
+    this.samples.push({ t: now, x, y, z, yaw });
+    if (this.samples.length > 12) this.samples.shift();
+    this.state = STATES[st] || 'idle';
+    this.hSpeed = hs;
+    if (hp !== this.health) { this.health = hp; this.avatar.drawTag(hp / this.maxHealth); }
+    this.inRound = !!(fl & 2); this.infected = !!(fl & 4); this.cold = !!(fl & 8);
+    this.coldLevel = cold || 0;
+    const eq = TOOL_IDS[tool] || null;
+    if (eq !== this.equipped) { this.equipped = eq; this.avatar.hold(eq); }
+    this.emote = EMOTES[emote] || null;
+    const seat = seatNid >= 0 ? this.game.world.byNid.get(seatNid) || null : null;
+    if (seat !== this.seat) {
+      if (this.seat && this.seat.occupant === this) this.seat.occupant = null;
+      this.seat = seat;
+      if (seat) seat.occupant = this;
+    }
+    if (swings !== this.swings) { this.swings = swings; this.avatar.swing = 1; }
+  }
+
+  netDie(cause) {
+    if (!this.alive) return;
+    this.die(cause);
+    this.samples.length = 0;
+  }
+
+  remotePose(now) {
+    const s = this.samples;
+    if (!s.length) return;
+    const rt = now - REMOTE_DELAY;
+    let a = s[0], b = s[s.length - 1];
+    for (let i = 0; i < s.length - 1; i++) if (s[i].t <= rt && s[i + 1].t >= rt) { a = s[i]; b = s[i + 1]; break; }
+    if (rt <= s[0].t) { a = b = s[0]; }
+    let k = b.t > a.t ? clamp((rt - a.t) / (b.t - a.t), 0, 1) : 1;
+    if (rt > s[s.length - 1].t && s.length > 1) {
+      // brief extrapolation if a packet is late
+      a = s[s.length - 2]; b = s[s.length - 1];
+      k = 1 + Math.min(0.15, (rt - b.t) / 1000) / Math.max(0.03, (b.t - a.t) / 1000);
+    }
+    this.pos.set(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k);
+    let d = b.yaw - a.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
+    this.yaw = a.yaw + d * Math.min(1, k);
+  }
+
+  stepRemote() {
+    if (!this.alive) return;
+    this.remotePose(performance.now());
+    this.prevPos.copy(this.pos);
+    this.body.setNextKinematicTranslation({ x: this.pos.x, y: this.pos.y + HALF, z: this.pos.z });
+  }
+
+  dispose() {
+    const w = this.game.world;
+    if (this.seat && this.seat.occupant === this) this.seat.occupant = null;
+    this.game.scene.remove(this.avatar.root);
+    w.byCollider.delete(this.collider.handle);
+    w.physics.removeRigidBody(this.body);
+    this.alive = false;
   }
 
   // smooth position between fixed physics steps (alpha = fraction of the next step)
@@ -343,9 +503,10 @@ export class Character {
   render(dt, alpha = 1) {
     if (!this.alive) return;
     const r = this.avatar.root;
-    r.position.copy(this.renderPos(alpha));
+    if (this.remote) { this.remotePose(performance.now()); r.position.copy(this.pos); }
+    else r.position.copy(this.renderPos(alpha));
     r.rotation.y = this.yaw;
     if (this.avatar.tag) this.avatar.tag.visible = this.game.camera.position.distanceTo(this.pos) < 100;
-    this.avatar.animate(dt, this.state, this.hSpeed || 0);
+    this.avatar.animate(dt, this.state, this.hSpeed || 0, this.emote);
   }
 }

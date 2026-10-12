@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Roboto:wght@400;500;700;900&family=Source+Sans+3:wght@400;600;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script type="importmap">
-{ "imports": { "three": "./vendor/three.module.js", "rapier": "./vendor/rapier.es.js" } }
+{ "imports": { "three": "./vendor/three.module.js", "rapier": "./vendor/rapier.es.js", "trystero": "./vendor/trystero.js" } }
 </script>
 </head>
 <body>
@@ -111,7 +111,7 @@
         <div class="set-row"><span class="set-label">Which Player?</span><div class="selector"><button class="chev">‹</button><span class="sel-val" id="report-player">—</span><button class="chev">›</button></div></div>
         <div class="set-row"><span class="set-label">Type Of Abuse</span><div class="selector"><button class="chev">‹</button><span class="sel-val">Choose One</span><button class="chev">›</button></div></div>
         <textarea class="report-text" placeholder="Short Description (Optional)" maxlength="200"></textarea>
-        <p class="hub-note">Everyone else on this server is a simulated player, so reports are not sent anywhere.</p>
+        <p class="hub-note">This remake has no moderation service, so reports are not sent anywhere. To stop seeing someone's messages, type /m followed by their name in the chat.</p>
       </div>
       <div class="hub-page" data-page="help"><div id="hub-help"></div></div>
       <div class="hub-page confirm" data-page="reset">
@@ -145,7 +145,7 @@
       <label class="xp-label" for="name-input">Display name</label>
       <input id="name-input" maxlength="20" autocomplete="off" spellcheck="false">
       <button id="play-btn" aria-label="Play"><svg viewBox="0 0 24 24" width="34" height="34"><path fill="#fff" d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5Z"/></svg></button>
-      <div class="xp-stats"><div><b>Genre</b><span>Survival</span></div><div><b>Max Players</b><span>21</span></div><div><b>Created</b><span>2008</span></div></div>
+      <div class="xp-stats"><div><b>Genre</b><span>Survival</span></div><div><b>Max Players</b><span>21</span></div><div><b>Created</b><span>2008</span></div><div><b>Playing</b><span id="xp-active">…</span></div></div>
       <p class="xp-desc">Survive a series of natural disasters! The map and disaster are chosen at random each round. Read the warning, pick your spot, and stay alive until the timer runs out.</p>
       <p class="xp-foot">Unofficial tribute. Not affiliated with or endorsed by Roblox Corporation.</p>
     </div>

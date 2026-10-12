@@ -1,8 +1,9 @@
-import { V, mapParts } from './common.js';
+import { V, mapParts, isHost, locals } from './common.js';
+import { rand } from '../util.js';
 
 const DIRS = [V(1, 0, 0), V(-1, 0, 0), V(0, 0, 1), V(0, 0, -1)];
 
-// "Warmth": walls close by on several sides plus nearby players.
+// "Warmth": walls close by on several sides, a roof, and other players nearby.
 export function warmth(g, c) {
   let walls = 0;
   const o = V(c.pos.x, c.pos.y + 2.5, c.pos.z);
@@ -13,16 +14,18 @@ export function warmth(g, c) {
   return walls + Math.min(2, near);
 }
 
+// White-out with a strong wind. The more exposed you are, the more the screen frosts
+// over (three stages); only the last stage drains health, so huddle between walls
+// or next to other players. The wind knocks loose small, badly supported bricks.
 export default {
   name: 'Blizzard',
   warning: 'Blizzard! Seek warmth and find shelter',
-  icon: '❄️',
   duration: 90,
-  sky: 'white',
   bot: 'indoor',
+  params() { return { a: Math.round(rand() * 6283) / 1000 }; },
   preWarn(g) { g.effects.setSky('snowy'); },
   start(g, st) {
-    const a = Math.random() * Math.PI * 2;
+    const a = st.p.a ?? 0;
     st.wind = V(Math.cos(a), 0, Math.sin(a)).multiplyScalar(14);
     st.tick = 0; st.gust = 2;
     g.effects.setSky('white');
@@ -31,39 +34,42 @@ export default {
   },
   update(g, st, dt) {
     st.tick += dt;
-    st.gust -= dt;
-    for (const c of g.chars) {
+    for (const c of locals(g)) {
       if (!c.alive || !c.inRound || c.seat) continue;
       if (!g.world.raycast(V(c.pos.x, c.pos.y + 2.5, c.pos.z), st.wind.clone().normalize().negate(), 20)) {
         c.ext.x += st.wind.x * dt * 0.5; c.ext.z += st.wind.z * dt * 0.5;
       }
     }
-    for (const p of g.world.dynamic) {
-      if (p.tags.has('corpse')) continue;
-      const v = p.size.x * p.size.y * p.size.z;
-      if (v < 60) g.world.push(p, { x: st.wind.x * dt * 2, y: 0, z: st.wind.z * dt * 2 });
-    }
-    if (st.gust <= 0) {
-      st.gust = 1.5 + Math.random() * 2;
-      const parts = mapParts(g).filter(p => p.anchored && p.size.x * p.size.y * p.size.z < 30);
-      for (let i = 0; i < 3 && parts.length; i++) {
-        const p = parts[Math.floor(Math.random() * parts.length)];
-        g.world.unanchor(p, { x: st.wind.x * 3, y: 6, z: st.wind.z * 3 });
+    if (isHost(g)) {
+      for (const p of g.world.dynamic) {
+        if (p.tags.has('corpse')) continue;
+        const v = p.size.x * p.size.y * p.size.z;
+        if (v < 60) g.world.push(p, { x: st.wind.x * dt * 2, y: 0, z: st.wind.z * dt * 2 });
+      }
+      st.gust -= dt;
+      if (st.gust <= 0) {
+        st.gust = 1.5 + rand() * 2;
+        const parts = mapParts(g).filter(p => p.anchored && p.size.x * p.size.y * p.size.z < 30 && (p.neighbors?.length ?? 0) <= 2);
+        for (let i = 0; i < 3 && parts.length; i++) {
+          const p = parts[Math.floor(rand() * parts.length)];
+          g.world.unanchor(p, { x: st.wind.x * 3, y: 6, z: st.wind.z * 3 });
+        }
       }
     }
-    if (st.tick >= 1) {
+    if (st.tick >= 0.5) {
       st.tick = 0;
-      for (const c of g.chars) {
-        if (!c.alive || !c.inRound) continue;
+      for (const c of locals(g)) {
+        if (!c.alive || !c.inRound) { c.coldLevel = 0; c.cold = false; continue; }
         const w = warmth(g, c);
-        c.cold = w < 2;
-        const dmg = w >= 2.5 ? 0 : w >= 1.5 ? 2 : w >= 0.5 ? 4 : 6;
-        c.damage(dmg, 'cold', true);
+        const stage = w >= 3 ? 0 : w >= 2 ? 1 : w >= 1 ? 2 : 3;
+        c.coldLevel = stage;
+        c.cold = stage >= 2;
+        if (stage === 3) c.damage(2.5, 'cold', true);
       }
     }
   },
   stop(g) {
-    for (const c of g.chars) c.cold = false;
+    for (const c of g.chars) { c.cold = false; c.coldLevel = 0; }
     g.effects.setWeather('snow', false);
     g.audio.loop('blizzard', false);
   },

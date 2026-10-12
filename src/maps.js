@@ -434,20 +434,21 @@ export const MAPS = [
         const dy = rise - (state.lastRise || 0);
         state.lastRise = rise;
         if (Math.random() < 0.6) game.effects.burst(V(rx, 2 + rise, rz), { size: 14, life: 0.8 });
-        for (let i = 0; i < rocket.length; i++) {
-          const p = rocket[i];
-          if (!p.alive || !p.anchored) continue;
-          const t0 = p.body.translation();
-          p.lastDelta = { x: 0, y: dy, z: 0 };
-          game.world.movePart(p, V(t0.x, t0.y + dy, t0.z));
-          p._moved = true;
+        // the host flies the rocket; everyone else gets its position from the host
+        if (game.isAuthority) {
+          for (let i = 0; i < rocket.length; i++) {
+            const p = rocket[i];
+            if (!p.alive || !p.anchored) continue;
+            const t0 = p.body.translation();
+            p.lastDelta = { x: 0, y: dy, z: 0 };
+            game.world.movePart(p, V(t0.x, t0.y + dy, t0.z));
+            p._moved = true;
+          }
         }
-        for (const c of game.chars) {
-          if (!c.alive || c.groundPart?.tags?.has('rocket') !== true) continue;
-          if (c.isPlayer && !state.badged) { state.badged = true; game.awardBadge('rocket'); }
-        }
+        const pl = game.player;
+        if (pl.alive && pl.groundPart?.tags?.has('rocket') && rise > 20 && !state.badged) { state.badged = true; game.awardBadge('rocket'); }
         if (rise > 600) {
-          for (const p of rocket) if (p.alive) game.world.removePart(p);
+          if (game.isAuthority) for (const p of rocket) if (p.alive) game.world.removePart(p);
           state.launched = false; state.t = 0; b.extras.update = null;
         }
       };

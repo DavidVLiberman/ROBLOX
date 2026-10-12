@@ -7,6 +7,8 @@
 import * as THREE from 'three';
 import { BADGES } from './data.js';
 import { makeToolModel } from './avatar.js';
+import { filterChat } from './chatfilter.js';
+import { botReply } from './bots.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -206,8 +208,10 @@ export class UI {
   // ============================== chat ==============================
   bindChat() {
     const inp = this.el.chatInput;
+    this.muted = new Set();
     inp.addEventListener('focus', () => { this.el.chat.classList.add('active'); this.chatActiveAt = performance.now(); });
-    inp.addEventListener('blur', () => { this.el.chat.classList.remove('active'); this.chatActiveAt = performance.now(); });
+    inp.addEventListener('blur', () => { this.el.chat.classList.remove('active'); this.chatActiveAt = performance.now(); this.setTyping(false); });
+    inp.addEventListener('input', () => this.setTyping(inp.value.trim().length > 0 && !inp.value.startsWith('/')));
     inp.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Enter') { this.sendChat(); inp.blur(); }
@@ -225,17 +229,77 @@ export class UI {
     this.el.chat.addEventListener('mouseenter', () => { this.chatActiveAt = performance.now(); });
   }
 
+  // bubble chat shows "..." over people who are typing
+  setTyping(on) {
+    const g = this.g;
+    if (this._typing === on) return;
+    this._typing = on;
+    g.player.typing = on;
+    if (g.net) g.net.send({ t: 'typing', eid: g.net.selfId, on });
+  }
+
   sendChat() {
     const inp = this.el.chatInput;
     const t = inp.value.trim().slice(0, 200);
     inp.value = '';
+    this.setTyping(false);
     if (!t || !this.g.player) return;
-    this.say(this.g.player, t);
+    if (t.startsWith('/') && this.command(t)) return;
+    const clean = filterChat(t);
+    this.g.sayChat(this.g.player, clean);
+    if (this.g.isAuthority) botReply(this.g, this.g.player, clean);
   }
 
-  chatLine(name, text, color) {
+  findSpeaker(name) {
+    const n = name.replace(/^@/, '').toLowerCase();
+    const list = this.g.chars.filter(c => c !== this.g.player);
+    return list.find(c => c.name.toLowerCase() === n) || list.find(c => c.name.toLowerCase().startsWith(n)) || null;
+  }
+
+  // TextChatService's default commands
+  command(t) {
+    const g = this.g;
+    const parts = t.slice(1).split(/\s+/);
+    const cmd = parts.shift().toLowerCase();
+    switch (cmd) {
+      case 'e': case 'emote': {
+        const e = (parts[0] || '').toLowerCase();
+        const map = { dance: 'dance', dance1: 'dance', dance2: 'dance2', dance3: 'dance3', wave: 'wave', point: 'point', cheer: 'cheer', laugh: 'laugh' };
+        if (map[e] && g.player.alive) g.player.setEmote(map[e]);
+        else if (!map[e]) this.system('Available emotes: /e dance, /e dance2, /e dance3, /e wave, /e point, /e cheer, /e laugh');
+        return true;
+      }
+      case 'w': case 'whisper': {
+        const who = parts.length ? this.findSpeaker(parts[0]) : null;
+        const msg = parts.slice(1).join(' ');
+        if (!who) { this.system('Speaker not found.'); return true; }
+        if (!msg) { this.system(`Type /w ${who.name} followed by your message to whisper to them.`); return true; }
+        g.sayChat(g.player, filterChat(msg), who);
+        return true;
+      }
+      case 'cls': case 'clear': this.el.chatLog.innerHTML = ''; return true;
+      case '?': case 'help':
+        for (const l of ['/e <emote> - play an emote: dance, dance2, dance3, wave, point, cheer, laugh', '/w <name> <message> - whisper to someone',
+          '/m <name> - mute someone, /um <name> - unmute them', '/cls - clear the chat', '/v - version']) this.system(l);
+        return true;
+      case 'm': case 'mute': case 'um': case 'unmute': {
+        const who = parts.length ? this.findSpeaker(parts[0]) : null;
+        if (!who) { this.system('Speaker not found.'); return true; }
+        const mute = cmd === 'm' || cmd === 'mute';
+        if (mute) this.muted.add(who.name); else this.muted.delete(who.name);
+        this.system(`${who.name} has been ${mute ? 'muted' : 'unmuted'}.`);
+        return true;
+      }
+      case 'v': case 'version':
+        this.system(`Natural Disaster Survival (web remake) · ${g.net ? `server "${g.net.roomName}", ${g.net.isHost ? 'you are the host' : 'connected'}` : 'offline'}`);
+        return true;
+    }
+    return false;
+  }
+
+  chatLine(name, text, color, cls = '') {
     const d = document.createElement('div');
-    d.className = 'msg' + (name ? '' : ' sys');
+    d.className = 'msg' + (name ? '' : ' sys') + (cls ? ' ' + cls : '');
     if (name) {
       const n = document.createElement('span'); n.className = 'nm'; n.style.color = color || nameColor(name); n.textContent = name + ': ';
       d.appendChild(n);
@@ -244,42 +308,81 @@ export class UI {
     const log = this.el.chatLog;
     const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
     log.appendChild(d);
-    while (log.children.length > 80) log.firstChild.remove();
+    while (log.children.length > 100) log.firstChild.remove();
     if (atBottom) log.scrollTop = log.scrollHeight;
     this.chatActiveAt = performance.now();
   }
 
   system(text) { this.chatLine('', text); }
 
-  say(char, text) {
+  // a message from someone in this server (already filtered)
+  say(char, text, whisperTo = null) {
+    if (whisperTo) { this.chatLine(`[To ${whisperTo.name}]`, text, '#c8c8c8', 'whisper'); return; }
     this.chatLine(char.name, text);
-    let b = this.bubbleMap.get(char);
-    if (!b) {
-      const el = document.createElement('div'); el.className = 'bstack';
-      this.el.bubbles.appendChild(el);
-      b = { el, list: [] }; this.bubbleMap.set(char, b);
-    }
+    this.bubble(char, text);
+  }
+
+  receiveChat(char, text, whisper) {
+    if (this.muted.has(char.name)) return;
+    const clean = filterChat(String(text).slice(0, 200));
+    if (whisper) { this.chatLine(`[From ${char.name}]`, clean, '#c8c8c8', 'whisper'); return; }
+    this.say(char, clean);
+    if (this.g.isAuthority && !char.isBot) botReply(this.g, char, clean);
+  }
+
+  bubble(char, text) {
+    const b = this.bubbleStack(char);
+    b.typing?.remove(); b.typing = null;
     const bub = document.createElement('div'); bub.className = 'bubble'; bub.textContent = text;
     b.el.appendChild(bub);
-    b.list.push({ el: bub, until: this.g.time + 12 });
+    b.list.push({ el: bub, until: this.g.time + 30 });
     while (b.list.length > 3) b.list.shift().el.remove();
     this.layoutBubble(b);
   }
 
+  bubbleStack(char) {
+    let b = this.bubbleMap.get(char);
+    if (!b) {
+      const el = document.createElement('div'); el.className = 'bstack';
+      const mini = document.createElement('div'); mini.className = 'bubble mini last'; mini.textContent = '⋯';
+      el.appendChild(mini);
+      this.el.bubbles.appendChild(el);
+      b = { el, mini, list: [], typing: null }; this.bubbleMap.set(char, b);
+    }
+    return b;
+  }
+
+  typing(char, on) {
+    const b = this.bubbleStack(char);
+    if (on && !b.typing) {
+      const t = document.createElement('div'); t.className = 'bubble typing last'; t.innerHTML = '<i></i><i></i><i></i>';
+      b.el.appendChild(t); b.typing = t;
+    } else if (!on && b.typing) { b.typing.remove(); b.typing = null; }
+    this.layoutBubble(b);
+  }
+
+  forgetChar(char) {
+    const b = this.bubbleMap.get(char);
+    if (b) { b.el.remove(); this.bubbleMap.delete(char); }
+  }
+
   layoutBubble(b) {
-    b.list.forEach((x, i) => { x.el.classList.toggle('last', i === b.list.length - 1); x.el.classList.toggle('old', i < b.list.length - 1); });
+    b.list.forEach((x, i) => { x.el.classList.toggle('last', i === b.list.length - 1 && !b.typing); x.el.classList.toggle('old', i < b.list.length - 1); });
   }
 
   updateBubbles() {
     const cam = this.g.camera;
     for (const [char, b] of this.bubbleMap) {
       for (let i = b.list.length - 1; i >= 0; i--) if (this.g.time > b.list[i].until || !char.alive) { b.list[i].el.remove(); b.list.splice(i, 1); this.layoutBubble(b); }
-      if (!b.list.length) { b.el.style.display = 'none'; continue; }
+      if (b.typing && !char.alive) { b.typing.remove(); b.typing = null; }
+      if (!b.list.length && !b.typing) { b.el.style.display = 'none'; continue; }
       _v.set(char.pos.x, char.pos.y + 6.4, char.pos.z);
       const dist = _v.distanceTo(cam.position);
       _v.project(cam);
-      if (_v.z > 1 || dist > 110 || (char.isPlayer && this.g.camController.firstPerson)) { b.el.style.display = 'none'; continue; }
+      if (_v.z > 1 || dist > 100 || (char.isPlayer && this.g.camController.firstPerson)) { b.el.style.display = 'none'; continue; }
       b.el.style.display = '';
+      // far away, the bubbles shrink into a single "..." bubble (MinimizeDistance 40)
+      b.el.classList.toggle('far', dist > 40);
       b.el.style.left = `${(_v.x * 0.5 + 0.5) * innerWidth}px`;
       b.el.style.top = `${(-_v.y * 0.5 + 0.5) * innerHeight}px`;
     }
@@ -385,7 +488,8 @@ export class UI {
     this.el.health.style.width = `${(hp / p.maxHealth) * 100}%`;
     this.el.health.style.background = healthColor(hp / p.maxHealth);
     this.el.healthText.textContent = String(Math.ceil(hp));
-    this.el.cold.style.opacity = p.cold && p.alive ? 0.7 : 0;
+    // blizzard: the screen frosts over in three stages as you get colder
+    this.el.cold.style.opacity = p.alive ? [0, 0.3, 0.6, 0.9][p.coldLevel || 0] : 0;
     this.el.sick.style.opacity = p.infected && p.alive ? 0.6 : 0;
     this.renderBackpack();
     this.lbTimer -= dt;
@@ -487,10 +591,12 @@ export class UI {
       ['Move', ['W', 'A', 'S', 'D']], ['Jump', ['Space']], ['Rotate Camera', ['Right Mouse', '←', '→']], ['Zoom', ['I', 'O', 'Wheel']],
       ['Shift Lock', ['Shift']], ['Chat', ['/']], ['Backpack', ['`']], ['Equip Tool', ['1', '2', '3']], ['Use Tool', ['Left Click']],
       ['Interact', ['E']], ['Player List', ['Tab']], ['Menu', ['Esc']], ['Reset Character', ['Esc', 'R', 'Enter']],
+      ['Climb a truss', ['W', 'S']], ['Let go of a truss', ['Space']],
     ];
     $('hub-help').innerHTML = '<div class="help-grid">' +
       rows.map(([a, ks]) => `<div class="help-item"><span>${a}</span><span class="help-keys">${ks.map(k => `<span class="keycap">${esc(k)}</span>`).join('')}</span></div>`).join('') + '</div>' +
-      '<p class="hub-note" style="margin-top:16px">Read the warning as soon as it appears. Flood &amp; Tsunami: get high, but not on the tallest tower. Acid Rain &amp; Meteor Shower: get under a roof on a low floor. Earthquake &amp; Fire: get outside, away from buildings. Blizzard: stand between walls near other players. Tornado: keep moving away from it. Deadly Virus: stay alone. Health is not restored between rounds, so reset in the lobby if you are low.</p>';
+      '<p class="hub-note" style="margin-top:16px">Read the warning as soon as it appears. Flood &amp; Tsunami: get high, but not on the tallest tower. Acid Rain &amp; Meteor Shower: get under a roof on a low floor. Earthquake &amp; Fire: get outside, away from buildings. Blizzard: stand between walls near other players. Tornado: keep moving away from it. Deadly Virus: stay alone. Sandstorm: stay upwind, out in the open. Health is not restored between rounds, so reset in the lobby if you are low.</p>' +
+      '<p class="hub-note">Everyone who opens this game plays on the same server; add <b>?server=</b> and any name to the link to make a private server for your friends. Chat commands: /e dance, /e dance2, /e dance3, /e wave, /e point, /e cheer, /e laugh · /w name message · /m name, /um name · /cls · /help.</p>';
   }
 
   renderSettings() {
@@ -595,8 +701,12 @@ export class UI {
   grant(k) {
     const g = this.g;
     if (k === 'multi') {
-      if (!g.round.addMulti()) { this.notify('Weather Machine', 'The Weather Machine is already at the maximum of 7 extra disasters.'); return false; }
-      this.system(`${g.player.name} added a disaster with the Weather Machine! (${g.round.multi}/7)`);
+      if (g.round.multi >= 7 || !g.round.addMulti()) { this.notify('Weather Machine', 'The Weather Machine is already at the maximum of 7 extra disasters.'); return false; }
+      // in multiplayer the host announces it to everyone
+      if (g.isAuthority) {
+        const text = `${g.player.name} added a disaster with the Weather Machine! (${g.round.multi}/7)`;
+        if (g.net) g.net.broadcastSystem(text); else this.system(text);
+      }
       return true;
     }
     if (k === 'hammer') {

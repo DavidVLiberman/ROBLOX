@@ -125,24 +125,57 @@ export class Avatar {
   // amplitude 1 at frequency 9, climbing adds a PI offset to the arms,
   // jumping/falling raises both arms straight up, idle is a 0.1 sway at
   // frequency 1, and the shoulder/hip motors are speed-limited (MaxVelocity).
-  animate(dt, state, speed) {
+  // Climbing limbs move with the climb speed and freeze while hanging on.
+  // emote: /e dance | dance2 | dance3 | wave | point | cheer | laugh
+  animate(dt, state, speed, emote = null) {
     this.t = (this.t || 0) + dt;
     let amp = 0.1, freq = 1, fudge = 0, maxVel = 0.15, la, ra, ll, rl, tilt = 0;
+    let laz = 0, raz = 0, bob = 0, twist = 0, lean = 0;
     if (state === 'walk') { amp = 1; freq = 9; }
-    else if (state === 'climb') { amp = 1; freq = 9; fudge = Math.PI; maxVel = 0.5; }
+    else if (state === 'climb') { amp = 1; fudge = Math.PI; maxVel = 0.5; }
     else if (state === 'swim') { amp = 1; freq = 6; fudge = Math.PI * 0.8; maxVel = 0.5; tilt = 1.2; }
     if (state === 'jump' || state === 'fall') {
       maxVel = 0.5; la = Math.PI; ra = Math.PI; ll = 0; rl = 0;
     } else if (state === 'sit') {
       maxVel = 0.15; la = ra = ll = rl = Math.PI / 2;
+    } else if (state === 'climb') {
+      this.climbPhase = (this.climbPhase || 0) + dt * 9 * Math.min(1.2, speed / 11.2);
+      const a = Math.sin(this.climbPhase);
+      la = a + fudge; ra = -a + fudge; rl = -a; ll = a;
+    } else if (state === 'idle' && emote) {
+      maxVel = 1;
+      const t = this.t;
+      ll = rl = 0; la = ra = 0;
+      if (emote === 'dance') {          // arms pump up and down in turn, hop on each beat
+        const s = Math.sin(t * 8);
+        la = Math.PI * 0.5 + s * 1.2; ra = Math.PI * 0.5 - s * 1.2;
+        ll = Math.max(0, s) * 0.6; rl = Math.max(0, -s) * 0.6; bob = Math.abs(Math.sin(t * 8)) * 0.35;
+      } else if (emote === 'dance2') {  // arms out, swaying side to side
+        const s = Math.sin(t * 5);
+        laz = -1.9 + s * 0.5; raz = 1.9 + s * 0.5; twist = s * 0.35; bob = Math.abs(Math.cos(t * 5)) * 0.2;
+        ll = Math.max(0, s) * 0.4; rl = Math.max(0, -s) * 0.4;
+      } else if (emote === 'dance3') {  // fists pumping above the head
+        const s = Math.sin(t * 10);
+        la = Math.PI * 0.85 + s * 0.35; ra = Math.PI * 0.85 - s * 0.35; laz = -0.25; raz = 0.25;
+        bob = Math.abs(s) * 0.25; lean = Math.sin(t * 2.5) * 0.12;
+      } else if (emote === 'wave') {
+        ra = Math.PI * 0.9; raz = 0.4 + Math.sin(t * 9) * 0.45;
+      } else if (emote === 'point') {
+        ra = Math.PI / 2;
+      } else if (emote === 'cheer') {
+        const s = Math.abs(Math.sin(t * 6));
+        la = ra = Math.PI * (0.75 + s * 0.25); laz = -0.3; raz = 0.3; bob = s * 0.3;
+      } else if (emote === 'laugh') {
+        lean = 0.15 + Math.sin(t * 16) * 0.1; la = ra = 0.35; laz = -0.2; raz = 0.2;
+      }
     } else {
       const a = amp * Math.sin(this.t * freq);
       ra = a + fudge; la = -a + fudge; rl = -a; ll = a;
-      if (state === 'climb' || state === 'swim') { la = a + fudge; ra = -a + fudge; }
+      if (state === 'swim') { la = a + fudge; ra = -a + fudge; }
     }
     // tool held: right arm points forward ("toolnone"), balloon is held up high
-    if (this.heldKind && state !== 'sit' && state !== 'jump' && state !== 'fall' && state !== 'climb') ra = Math.PI / 2;
-    if (this.heldKind === 'balloon') ra = Math.PI;
+    if (this.heldKind && state !== 'sit' && state !== 'jump' && state !== 'fall' && state !== 'climb' && !emote) ra = Math.PI / 2;
+    if (this.heldKind === 'balloon' && state !== 'climb') ra = Math.PI;
     if (this.swing > 0) { ra = Math.PI / 2 + Math.sin(this.swing * Math.PI) * 1.2; this.swing -= dt * 3; maxVel = 1; }
     // Motor6D MaxVelocity is per 1/30 s step in the legacy engine
     const step = maxVel * 30 * dt;
@@ -150,9 +183,12 @@ export class Avatar {
     const L = this.leftArm.rotation, R = this.rightArm.rotation, LL = this.leftLeg.rotation, RL = this.rightLeg.rotation;
     // positive = forward swing; limbs hang along -y so forward is a negative X rotation
     L.x = mv(L.x, -la); R.x = mv(R.x, -ra); LL.x = mv(LL.x, -ll); RL.x = mv(RL.x, -rl);
-    const k = Math.min(1, dt * 10);
-    this.body.rotation.x += (tilt - this.body.rotation.x) * k;
-    this.body.position.y = state === 'sit' ? -1.6 : (tilt ? 1.5 : 0);
+    const k = Math.min(1, dt * 12);
+    L.z += (laz - L.z) * k; R.z += (raz - R.z) * k;
+    this.body.rotation.x += (tilt + lean - this.body.rotation.x) * Math.min(1, dt * 10);
+    this.body.rotation.y += (twist - this.body.rotation.y) * k;
+    const by = state === 'sit' ? -1.6 : (tilt ? 1.5 : 0) + bob;
+    this.body.position.y += (by - this.body.position.y) * (bob ? k : 1);
   }
 
   setVisible(v) { this.body.visible = v; if (this.tag) this.tag.visible = v; }
