@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Natural Disaster Survival</title>
+<meta name="description" content="A browser remake of the classic round-based disaster survival game. Survive floods, tsunamis, tornadoes and more as a classic noob.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js", "rapier": "./vendor/rapier.es.js" } }
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- HUD -->
+<button id="menu-btn" title="Menu (Esc)"><span></span></button>
+<div id="status"><span id="status-text">Intermission</span><span id="status-time"></span></div>
+<div id="toasts"></div>
+<div id="warnings"></div>
+
+<table id="lb"><thead><tr><th class="nm">Players</th><th>Survivals</th></tr></thead><tbody id="lb-body"></tbody></table>
+
+<div id="shop">
+  <button data-shop="balloon"><span>🎈</span><small>Balloon</small></button>
+  <button data-shop="apple"><span>🍎</span><small>Apple</small></button>
+  <button data-shop="compass"><span>🧭</span><small>Compass</small></button>
+  <button data-shop="hammer" class="free"><span>🔨</span><small>Free Hammer</small></button>
+  <button data-shop="multi"><span>🌩️</span><small>Multi</small></button>
+</div>
+
+<div id="hotbar"></div>
+<div id="health"><div id="health-fill"></div><div id="health-text">100 / 100</div></div>
+<div id="prompt"></div>
+
+<div id="survivors"><div class="s-head">Survivors</div><ul id="survivor-list"></ul></div>
+<div id="vote"></div>
+<div id="badges"></div>
+<div id="dead">Respawning…</div>
+
+<div id="hurt"></div><div id="cold"></div><div id="sick"></div>
+
+<div id="joy"><div id="joy-knob"></div></div>
+<button id="jump-btn">⤒</button>
+
+<div id="shop-modal"></div>
+
+<div id="menu">
+  <div class="m-card">
+    <div class="m-title">Menu</div>
+    <button id="m-resume">Resume Game</button>
+    <button id="m-reset">Reset Character <kbd>R</kbd></button>
+    <button id="m-badges">Badges</button>
+    <button id="m-help">Controls &amp; Tips</button>
+    <button id="m-mute">Sound: On</button>
+    <button id="m-gfx">Graphics: High</button>
+    <button id="m-skip">Skip Intermission</button>
+    <div id="badge-list"></div>
+    <div id="help">
+      <p><b>Move</b> WASD / ↑↓ · <b>Jump</b> Space · <b>Camera</b> drag with right (or left) mouse · <b>Zoom</b> scroll or I/O · <b>Turn</b> ← → · <b>Shift-lock</b> Shift</p>
+      <p><b>Tools</b> 1–3 to equip, click to use · <b>Interact</b> E (Weather Machine, cars, rocket button)</p>
+      <p><b>Tips:</b> read the warning fast. Flood &amp; Tsunami → get high (but not the tallest tower). Acid Rain &amp; Meteors → get under a roof on a low floor. Earthquake &amp; Fire → get outside, away from buildings, keep jumping. Blizzard → stand between walls near other players. Tornado → keep moving away from it. Virus → stay alone.</p>
+      <p>Health is not restored between rounds. Reset in the lobby if you are low.</p>
+    </div>
+  </div>
+</div>
+
+<div id="start">
+  <div class="st-card">
+    <div class="st-logo"><span class="st-noob"><i class="h"></i><i class="t"></i><i class="a l"></i><i class="a r"></i><i class="g l"></i><i class="g r"></i></span></div>
+    <h1>Natural Disaster<br>Survival</h1>
+    <p class="st-sub">Get dropped onto a random map. Read the warning. Survive the disaster.</p>
+    <label class="st-label" for="name-input">Username</label>
+    <input id="name-input" maxlength="20" autocomplete="off" spellcheck="false">
+    <button id="play-btn">Play</button>
+    <p class="st-keys">WASD to move · Space to jump · Right-drag to look · Scroll to zoom · Esc for menu</p>
+    <p class="st-foot">Fan-made browser tribute to Stickmasterluke's classic. Not affiliated with or endorsed by Roblox Corporation.</p>
+  </div>
+</div>
+<div id="loading">Loading…</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
