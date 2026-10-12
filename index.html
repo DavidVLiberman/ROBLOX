@@ -4,12 +4,66 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Natural Disaster Survival</title>
+<meta name="build" content="2026.10.12.1715">
 <meta name="description" content="A browser remake of the classic round-based disaster survival game. Survive floods, tsunamis, tornadoes and more as a classic noob.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Roboto:wght@400;500;700;900&family=Source+Sans+3:wght@400;600;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2026.10.12.1715">
 <script type="importmap">
-{ "imports": { "three": "./vendor/three.module.js", "rapier": "./vendor/rapier.es.js", "trystero": "./vendor/trystero.js" } }
+{ "imports": {
+  "three": "./vendor/three.module.js?v=2026.10.12.1715",
+  "rapier": "./vendor/rapier.es.js?v=2026.10.12.1715",
+  "trystero": "./vendor/trystero.js?v=2026.10.12.1715",
+  "./src/audio.js": "./src/audio.js?v=2026.10.12.1715",
+  "./src/avatar.js": "./src/avatar.js?v=2026.10.12.1715",
+  "./src/bots.js": "./src/bots.js?v=2026.10.12.1715",
+  "./src/builder.js": "./src/builder.js?v=2026.10.12.1715",
+  "./src/camera.js": "./src/camera.js?v=2026.10.12.1715",
+  "./src/character.js": "./src/character.js?v=2026.10.12.1715",
+  "./src/chatfilter.js": "./src/chatfilter.js?v=2026.10.12.1715",
+  "./src/data.js": "./src/data.js?v=2026.10.12.1715",
+  "./src/disasters/acid.js": "./src/disasters/acid.js?v=2026.10.12.1715",
+  "./src/disasters/avalanche.js": "./src/disasters/avalanche.js?v=2026.10.12.1715",
+  "./src/disasters/blizzard.js": "./src/disasters/blizzard.js?v=2026.10.12.1715",
+  "./src/disasters/common.js": "./src/disasters/common.js?v=2026.10.12.1715",
+  "./src/disasters/earthquake.js": "./src/disasters/earthquake.js?v=2026.10.12.1715",
+  "./src/disasters/fire.js": "./src/disasters/fire.js?v=2026.10.12.1715",
+  "./src/disasters/flood.js": "./src/disasters/flood.js?v=2026.10.12.1715",
+  "./src/disasters/index.js": "./src/disasters/index.js?v=2026.10.12.1715",
+  "./src/disasters/meteor.js": "./src/disasters/meteor.js?v=2026.10.12.1715",
+  "./src/disasters/sandstorm.js": "./src/disasters/sandstorm.js?v=2026.10.12.1715",
+  "./src/disasters/thunder.js": "./src/disasters/thunder.js?v=2026.10.12.1715",
+  "./src/disasters/tornado.js": "./src/disasters/tornado.js?v=2026.10.12.1715",
+  "./src/disasters/tsunami.js": "./src/disasters/tsunami.js?v=2026.10.12.1715",
+  "./src/disasters/virus.js": "./src/disasters/virus.js?v=2026.10.12.1715",
+  "./src/disasters/volcano.js": "./src/disasters/volcano.js?v=2026.10.12.1715",
+  "./src/effects.js": "./src/effects.js?v=2026.10.12.1715",
+  "./src/input.js": "./src/input.js?v=2026.10.12.1715",
+  "./src/island.js": "./src/island.js?v=2026.10.12.1715",
+  "./src/main.js": "./src/main.js?v=2026.10.12.1715",
+  "./src/maps.js": "./src/maps.js?v=2026.10.12.1715",
+  "./src/materials.js": "./src/materials.js?v=2026.10.12.1715",
+  "./src/nav.js": "./src/nav.js?v=2026.10.12.1715",
+  "./src/net.js": "./src/net.js?v=2026.10.12.1715",
+  "./src/round.js": "./src/round.js?v=2026.10.12.1715",
+  "./src/ui.js": "./src/ui.js?v=2026.10.12.1715",
+  "./src/util.js": "./src/util.js?v=2026.10.12.1715",
+  "./src/vehicles.js": "./src/vehicles.js?v=2026.10.12.1715",
+  "./src/world.js": "./src/world.js?v=2026.10.12.1715"
+} }
+</script>
+<script>
+// Browsers keep old copies of the game files for a while: if a newer build is live, load it.
+(() => {
+  const build = document.querySelector('meta[name=build]').content;
+  fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then((r) => r.json()).then((v) => {
+    const u = new URL(location.href);
+    if (v.build && v.build !== build && u.searchParams.get('build') !== v.build) {
+      u.searchParams.set('build', v.build);
+      location.replace(u);
+    }
+  }).catch(() => {});
+})();
 </script>
 </head>
 <body>
@@ -148,7 +202,7 @@
       <button id="play-btn" aria-label="Play"><svg viewBox="0 0 24 24" width="34" height="34"><path fill="#fff" d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5Z"/></svg></button>
       <div class="xp-stats"><div><b>Genre</b><span>Survival</span></div><div><b>Max Players</b><span>21</span></div><div><b>Created</b><span>2026</span></div><div><b>Playing</b><span id="xp-active">…</span></div></div>
       <p class="xp-desc">Survive a series of natural disasters! The map and disaster are chosen at random each round. Read the warning, pick your spot, and stay alive until the timer runs out.</p>
-      <p class="xp-foot">Unofficial tribute. Not affiliated with or endorsed by Roblox Corporation.</p>
+      <p class="xp-foot">Unofficial tribute. Not affiliated with or endorsed by Roblox Corporation. <span class="xp-build">Build 2026.10.12.1715</span></p>
     </div>
   </div>
 </div>
@@ -157,6 +211,6 @@
   <div class="ld-spin"></div>
 </div>
 
-<script type="module" src="src/main.js"></script>
+<script type="module" src="src/main.js?v=2026.10.12.1715"></script>
 </body>
 </html>

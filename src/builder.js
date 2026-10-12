@@ -32,6 +32,9 @@ export class MapBuilder {
     this.vehicles = [];
     this.interact = [];
     this.heights = [];
+    this.flights = [];   // every staircase: used by bots (and tests) to walk between floors
+    this.ramps = [];     // ways up onto raised ground (a hill) from the island
+    this.aisles = [];    // walkways on upper floors kept free of furniture (to the next flight)
     this.extras = {};
   }
 
@@ -63,6 +66,7 @@ export class MapBuilder {
     return this.part({ pos: [x, y + h / 2, z], size: [w, h, d], color, mat, shape: 'wedge', rot: [0, rotY, 0], ...extra });
   }
   spawn(x, y, z) { this.spawns.push(V(x, y, z)); }
+  ramp(foot, top) { this.ramps.push({ foot: foot.clone(), top: top.clone() }); }
   spot(type, x, y, z, path = []) { this.spots.push({ type, pos: V(x, y, z), path: path.map(p => p.clone()) }); }
 
   // Wall along X at fixed z (from x0 to x1). openings: [{a,b,y0,y1,glass}]
@@ -108,8 +112,8 @@ export class MapBuilder {
     }
   }
 
-  slab(rect, y0, y1, color, mat, extra) {
-    this.box(rect.x0, y0, rect.z0, rect.x1, y1, rect.z1, color, mat, extra);
+  slab(rect, y0, y1, color, mat, extra = {}) {
+    return this.box(rect.x0, y0, rect.z0, rect.x1, y1, rect.z1, color, mat, { ...extra, tags: [...(extra.tags || []), 'floor'] });
   }
 
   windowsAlong(a0, a1, y, { winW = 4, winH = 5, spacing = 8, sill = 3 } = {}) {
@@ -189,15 +193,32 @@ export class MapBuilder {
       this.wallX(z0 + t / 2, x0, x1, wy, wh, t, color, mat, nOpen, glassColor, trimColor);
       this.wallZ(x0 + t / 2, z0 + t, z1 - t, wy, wh, t, color, mat, wOpen, glassColor, trimColor);
       this.wallZ(x1 - t / 2, z0 + t, z1 - t, wy, wh, t, color, mat, eOpen, glassColor, trimColor);
-      if (trim) this.box(x0 - 0.3, y0 + fh - 1.6, z0 - 0.3, x1 + 0.3, y0 + fh - 1, z1 + 0.3, trim, 'plastic');
+      // trim band around the outside of the walls (a band, not a slab: it must not cover the stairwell)
+      if (trim) {
+        const ya = y0 + fh - 1.6, yb = y0 + fh - 1;
+        this.box(x0 - 0.3, ya, z0 - 0.3, x1 + 0.3, yb, z0 + 0.3, trim, 'plastic');
+        this.box(x0 - 0.3, ya, z1 - 0.3, x1 + 0.3, yb, z1 + 0.3, trim, 'plastic');
+        this.box(x0 - 0.3, ya, z0 + 0.3, x0 + 0.3, yb, z1 - 0.3, trim, 'plastic');
+        this.box(x1 - 0.3, ya, z0 + 0.3, x1 + 0.3, yb, z1 - 0.3, trim, 'plastic');
+      }
     }
     // stairs
     const sc = stairColor ?? floorColor;
     for (const f of flightInfo) {
       const y0 = levelY(f.k);
+      this.flights.push({ x0: f.xs, x1: f.xe, z: (f.bz0 + f.bz1) / 2, y0, y1: levelY(f.k + 1), dir: f.dir, zw: f.bz1 - f.bz0 });
+      const prev = flightInfo[f.k - 1];
+      if (prev) {
+        // from the top of the flight below, along its wall and across the end of the
+        // building to the foot of this one: keep that free of tables and shelves
+        const ex = f.dir > 0 ? ix0 + 0.5 : ix1 - 0.5;
+        this.aisles.push({ x0: Math.min(ex, f.xs), x1: Math.max(ex, f.xs), z0: iz0 + 0.5, z1: iz1 - 0.5, y0: y0 + 0.35, y1: y0 + 5.5 });
+        this.aisles.push({ x0: Math.min(ex, prev.xe), x1: Math.max(ex, prev.xe), z0: Math.max(iz0 + 0.5, prev.bz0), z1: Math.min(iz1 - 0.5, prev.bz1), y0: y0 + 0.35, y1: y0 + 5.5 });
+      }
       for (let i = 0; i < N; i++) {
         const sx0 = f.xs + f.dir * i * run, sx1 = f.xs + f.dir * (i + 1) * run;
-        this.box(sx0, y0 + i * rise, f.bz0, sx1, y0 + (i + 1) * rise, f.bz1, sc, floorMat, stairFire && f.k === 0 && i === 2 ? { tags: ['fire'] } : {});
+        // solid down to the floor, so nobody wanders in under the flight
+        this.box(sx0, y0, f.bz0, sx1, y0 + (i + 1) * rise, f.bz1, sc, floorMat, { tags: stairFire && f.k === 0 && i === 2 ? ['stair', 'fire'] : ['stair'] });
       }
     }
     let trussPart = null;
@@ -278,13 +299,18 @@ export class MapBuilder {
     const doorIn = V(dX, by, door === 'N' ? z0 + 4 : z1 - 4);
     const path = [doorOut, doorIn];
     const center = (k) => V(x + (rand() - .5) * w * 0.3, levelY(k), z);
+    // up flight f: along the wall of the flight below to the end of the building
+    // (the aisle above), across to the foot of this one, then up
+    const climbFlight = (p, f) => {
+      const prev = flightInfo[f.k - 1], fx = f.xs - f.dir * 1.6;
+      if (prev) p.push(V(fx, levelY(f.k), (prev.bz0 + prev.bz1) / 2));
+      p.push(V(fx, levelY(f.k), (f.bz0 + f.bz1) / 2));
+      p.push(V(f.xe + f.dir * 1.8, levelY(f.k + 1), (f.bz0 + f.bz1) / 2));
+    };
     for (let k = 0; k < floors; k++) {
       if (k > 0) {
-        if (useStairs) {
-          const f = flightInfo[k - 1];
-          path.push(V(f.xs - f.dir * 1.6, levelY(k - 1), (f.bz0 + f.bz1) / 2));
-          path.push(V(f.xe + f.dir * 1.8, levelY(k), (f.bz0 + f.bz1) / 2));
-        } else if (useTruss) {
+        if (useStairs) climbFlight(path, flightInfo[k - 1]);
+        else if (useTruss) {
           if (k === 1) path.push(V(ix0 + 4.5, by, iz0 + 4.5));
           path.push(V(ix0 + 1.5, levelY(k), iz0 + 1.5));
           path.push(V(ix0 + 8, levelY(k), iz0 + 3.5));
@@ -296,11 +322,8 @@ export class MapBuilder {
     }
     if (roof === 'flat' && roofAccess && (useStairs || useTruss)) {
       const p = [...path];
-      if (useStairs) {
-        const f = flightInfo[floors - 1];
-        p.push(V(f.xs - f.dir * 1.6, levelY(floors - 1), (f.bz0 + f.bz1) / 2));
-        p.push(V(f.xe + f.dir * 1.8, top, (f.bz0 + f.bz1) / 2));
-      } else {
+      if (useStairs) climbFlight(p, flightInfo[floors - 1]);
+      else {
         if (floors === 1) p.push(V(ix0 + 4.5, by, iz0 + 4.5));
         p.push(V(ix0 + 1.5, top, iz0 + 1.5));
         p.push(V(ix0 + 8, top, iz0 + 3.5));
@@ -445,8 +468,46 @@ export class MapBuilder {
     return veh;
   }
 
+  // Keep every staircase walkable: small props that ended up in a stair's walking
+  // corridor (furniture, decorations, fixtures) are taken out.
+  clearStairways() {
+    const keep = new Set(['stair', 'floor', 'fire', 'truss', 'indestructible', 'seat']);
+    const removed = new Set();
+    const zones = [
+      ...this.flights.map(f => ({ ax: Math.min(f.x0, f.x1) - 2.5, bx: Math.max(f.x0, f.x1) + 2.5, az: f.z - 1.3, bz: f.z + 1.3, ay: f.y0 + 0.35, by: f.y1 + 5.5 })),
+      ...this.aisles.map(a => ({ ax: a.x0, bx: a.x1, az: a.z0, bz: a.z1, ay: a.y0, by: a.y1 })),
+    ];
+    for (const { ax, bx, az, bz, ay, by } of zones) {
+      for (const p of this.parts) {
+        if (removed.has(p) || [...p.tags].some(t => keep.has(t))) continue;
+        if (Math.max(p.size.x, p.size.y, p.size.z) > 8) continue;
+        const b = this.world.aabb(p);
+        if (b.maxX <= ax || b.minX >= bx || b.maxZ <= az || b.minZ >= bz || b.maxY <= ay || b.minY >= by) continue;
+        removed.add(p);
+      }
+    }
+    for (const p of removed) this.world.removePart(p, true);
+    if (removed.size) {
+      this.parts = this.parts.filter(p => !removed.has(p));
+      this.seats = this.seats.filter(p => !removed.has(p));
+    }
+  }
+
   finish() {
+    this.clearStairways();
     for (const s of this.spawns) s.y = Math.max(s.y, 0);
+    // never spawn anyone inside a parked car or a wall: move to the nearest clear spot
+    const boxes = this.parts.filter(p => p.collide).map(p => this.world.aabb(p));
+    const clear = (x, y, z) => !boxes.some(b => b.maxX > x - 1.3 && b.minX < x + 1.3 && b.maxZ > z - 1.3 && b.minZ < z + 1.3 && b.maxY > y + 1 && b.minY < y + 5.2);
+    for (const s of this.spawns) {
+      if (clear(s.x, s.y, s.z)) continue;
+      search: for (let r = 2; r <= 20; r += 2) {
+        for (let a = 0; a < 16; a++) {
+          const x = s.x + Math.cos(a * Math.PI / 8) * r, z = s.z + Math.sin(a * Math.PI / 8) * r;
+          if (clear(x, s.y, z)) { s.x = x; s.z = z; break search; }
+        }
+      }
+    }
     // default open spots from spawns
     for (const s of this.spawns) this.spot('open', s.x, s.y, s.z, []);
     // tallest solid structure: buildings plus any chunky part (ignores poles and floating balloons)
@@ -465,6 +526,8 @@ export class MapBuilder {
       fireStarts: this.fireStarts,
       seats: this.seats,
       trusses: this.trusses,
+      flights: this.flights,
+      ramps: this.ramps,
       vehicles: this.vehicles,
       interact: this.interact,
       tallest: sorted[0] || 10,

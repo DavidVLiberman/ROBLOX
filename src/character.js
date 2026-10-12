@@ -277,6 +277,16 @@ export class Character {
       dx = (this.move.x * speed + this.ext.x) * dt;
       dz = (this.move.z * speed + this.ext.z) * dt;
     }
+    // walk up stair steps and curbs (up to 1.6 studs): Rapier's own autostep refuses
+    // square steps, so lift the character onto the step ourselves
+    if (!climb && !swimming && this.vel.y <= 1 && (this.grounded || game.time - this.lastGrounded < 0.1)) {
+      const h = this.findStep(dx, dz);
+      if (h > 0) {
+        this.pos.y += h + 0.03;
+        this.collider.setTranslation({ x: this.pos.x, y: this.pos.y + HALF, z: this.pos.z });
+        this.vel.y = Math.max(this.vel.y, 0);
+      }
+    }
     const dy = this.vel.y * dt;
     this.kcc.computeColliderMovement(this.collider, { x: dx, y: dy, z: dz }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, QUERY_GROUPS);
     const mv = this.kcc.computedMovement();
@@ -367,6 +377,32 @@ export class Character {
     else this.state = 'idle';
   }
 
+  // Height of a step right in front of the feet in the move direction (0 = none).
+  findStep(dx, dz) {
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-4) return 0;
+    const fx = dx / len, fz = dz / len, w = this.game.world, p = this.pos;
+    const reach = 1.05 + len + 0.12;
+    const fwd = { x: fx, y: 0, z: fz };
+    // something at ankle height that is a wall (not a ramp)...
+    const low = w.raycast({ x: p.x, y: p.y + 0.2, z: p.z }, fwd, reach);
+    if (!low || Math.abs(low.normal.y) > 0.6 || low.object?.tags?.has('truss')) return 0;
+    // ...but clear at knee height above the step
+    for (const side of [0, -0.7, 0.7]) {
+      const o = { x: p.x - fz * side, y: p.y + 1.75, z: p.z + fx * side };
+      if (w.raycast(o, fwd, low.dist + 0.6)) return 0;
+    }
+    // top of the step just past its face
+    const d = low.dist + 0.3;
+    const down = w.raycast({ x: p.x + fx * d, y: p.y + 1.75, z: p.z + fz * d }, { x: 0, y: -1, z: 0 }, 1.75);
+    if (!down || down.normal.y < 0.7) return 0;
+    const h = down.point.y - p.y;
+    if (h < 0.08 || h > 1.65) return 0;
+    // room for our head after stepping up
+    if (w.raycast({ x: p.x, y: p.y + 4.9, z: p.z }, { x: 0, y: 1, z: 0 }, h + 0.2)) return 0;
+    return h;
+  }
+
   // Nearest climbable truss within reach: closest point, direction to it, distance.
   nearestTruss() {
     let best = null;
@@ -399,8 +435,8 @@ export class Character {
     const side = new THREE.Vector3(-tr.n.z, 0, tr.n.x);
     const lateral = mlen > 0.05 ? this.move.x * side.x + this.move.z * side.z : 0;
     if (!this.climbing) {
-      // grab it by walking (or jumping) into it
-      if (tr.dist > GRAB || toward < 0.35 || this.pos.y > tr.b.maxY - 0.6) return null;
+      // grab it by walking (or jumping) into it (bots only when they mean to climb)
+      if (tr.dist > GRAB || toward < 0.35 || this.pos.y > tr.b.maxY - 0.6 || this.noClimb) return null;
       this.climbing = tr.t;
     } else if (tr.t !== this.climbing && tr.dist > GRAB) { this.climbing = null; return null; }
     if (tr.dist > GRAB + 0.5) { this.climbing = null; return null; }

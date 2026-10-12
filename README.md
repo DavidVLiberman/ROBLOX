@@ -47,6 +47,11 @@ This repository is published with GitHub Pages straight from its default branch:
 https://davidvliberman.github.io/ROBLOX/ within a minute or two. (`.github/workflows/pages.yml` is an
 alternative that deploys from `main` if Pages is switched to **Source: GitHub Actions**.)
 
+Run `node tools/stamp.mjs` before committing a change. It writes a new build id into `index.html` and
+`version.json`; every script is then loaded as `file.js?v=<build>` (through the import map), so browsers
+can't mix old and new files, and an open copy of the old page reloads itself once it sees the new
+`version.json`. The build id is shown at the bottom of the start screen.
+
 ## What's in it
 
 | Spec item | Implementation |
@@ -56,14 +61,14 @@ alternative that deploys from `main` if Pages is switched to **Source: GitHub Ac
 | Lobby & dying | When you die you respawn in the Lobby Tower after 5 seconds, looking out over the map. From the lobby you can press **Spectate** to follow anyone still in the round (◀ ▶ to switch). |
 | Avatar | R6-style Noob with the classic Smile face; walk 16, jump power 50, 100 HP, Roblox gravity 196.2. Walk/jump/fall/climb/swim/sit animations and the R6 chat emotes (/e dance, dance2, dance3, wave, point, cheer, laugh). Falls apart into six pieces on death. |
 | Climbing | Truss climbing like a Roblox Humanoid: walk into a truss to grab it, forward climbs at 11.2 studs/s (70% of WalkSpeed), back climbs down, no input hangs on, sideways shuffles, Space kicks off backwards, and you pull yourself up over the top. |
-| Movement | Fixed 60 Hz physics with smoothed (interpolated) rendering, 1.6-stud auto step-up, a short jump grace period after walking off a ledge, ground snapping on slopes and stairs, and players gently pushing apart instead of getting stuck on each other. Trusses climb at 12 studs/s. |
+| Movement | Fixed 60 Hz physics with smoothed (interpolated) rendering, 1.6-stud step-up that walks straight up stairs and kerbs (and back down them), a short jump grace period after walking off a ledge, ground snapping on slopes and stairs, and players gently pushing apart instead of getting stuck on each other. Building staircases are solid and kept clear of furniture, and nobody spawns inside a car or a wall. |
 | Maps (23) | Arch Park, Coastal Quickstop, Devastation Station, Factory Frenzy, Fort Indestructible, Furious Station, Glass Office, Happy Home, Heights School, Launch Land, Lucky Mart, Manic Mansion, Modest Headquarters, Party Palace, Prison Panic, Rainbow Ride, Rakish Refinery, Raving Raceway, Safety Second, Sky Tower, Sunny Ranch, Surf Central, Trailer Park — each with its fixed fire start, stairs, seats, drivable cars, and a launchable rocket on Launch Land. Every map has truss ladders up to high ground (roofs, towers, chimneys, silos, the crane, the stage); on Launch Land you can climb the launch tower and walk across onto a walkway around the rocket and ride it up. Buildings have window sills and headers, door frames, roof coping and ridge caps, AC units, porch lights, furniture inside, and the maps have signs, bushes, trees and street lamps. |
 | Disasters (13) | Flash Flood (rises, then surges around its peak), Tsunami (bright blue curling wave that shrinks as it comes ashore, then a smaller second wave), Meteor Shower (about two a second at random angles, punching through a floor or two), Thunder Storm (45 yellow branching bolts, near misses burn and throw you), Volcanic Eruption (rises out of the sea next to the island, erupts 15 s later, throws lava blocks that cool into obsidian), Blizzard (three frost stages, only the last one hurts; walls and other players keep you warm), Avalanche (mountain rises before the warning, snow chunks tumble down), Acid Rain (bricks go grey, green, dark green, black, then dissolve; green bricks break loose and burn on touch), Tornado (layered swirling funnel with a cloud cap and orbiting debris), Earthquake (cracks open in the ground), Sandstorm (a rolling sand front; only flying bricks hurt), Fire (bricks heat up with small flames before catching, burn yellow/orange/red, then char black; never spreads to grass), Deadly Virus (purple droplets, no cure) — exact warning strings, and the same weather hints before the warning as the real game. |
 | Destruction | Every brick is anchored at round start. Disasters unanchor, push, corrode, burn or delete parts; a weld graph makes anything no longer connected to the ground collapse. Fast debris deals damage by speed and size. |
 | Multi-Disaster | Weather Machine (E in the lobby, or the shop) stacks up to 7 extra disasters; warnings stack on screen. |
 | Items | Green Balloon, Red Apple, Yellow Compass, Blue Hammer (12/day) — all free here. |
 | Progression | Survivals + streak saved in `localStorage`; all badges from the spec (milestones, streaks, Close Call, Chance, map/disaster combos, Rocket Escape, Multi-Disaster 2–7). |
-| Players | Real players over peer-to-peer multiplayer (see above), plus simulated players (bots) that wander the lobby, explore, pick a spot depending on the warning (high ground, indoors, open ground, away from the hazard), chat, and answer when people talk to them. |
+| Players | Real players over peer-to-peer multiplayer (see above), plus simulated players (bots) that wander the lobby, explore, pick a spot depending on the warning (high ground, indoors, open ground, away from the hazard), chat, and answer when people talk to them. Bots find their way with A* over a walk grid of the island (round walls, through doors and gates, up hill steps), then take the stairs and truss ladders floor by floor; if they get stuck they remember the spot and plan another way round. They dodge meteors and lava, use the Red Apple and Green Balloon, and climb higher when the water rises. In tests they reach 178 of the 180 hiding spots across the 23 maps. |
 | Chat | Shared server chat with Roblox name colours and bubble chat (3 stacked bubbles, 30 s, shrinks to "⋯" beyond 40 studs, hidden beyond 100), a "..." typing indicator, Roblox-style `#` filtering of swear words, phone numbers, e-mails and links, "joined/left the game" messages, and the TextChatService commands: `/e`, `/w name`, `/m name`, `/um name`, `/cls`, `/help`, `/v`. |
 | Roblox interface | Recreated in HTML/CSS (no copied Roblox image files): top bar (Roblox menu button + ≡ menu with Leaderboard / Backpack / Capture / Report, chat toggle), chat window + bubble chat with Roblox name colours, player list with a Survivals column (Tab), backpack hotbar + inventory with Search (` key) where tools show their names like icon-less Roblox tools, ProximityPrompts, Roblox-style notifications ("Badge Awarded"), the "Buy Item" purchase prompt, and the Esc menu with People / Settings / Report / Help tabs plus Reset Character [R], Leave [L], Resume [Esc]. Mobile thumbstick + jump button. |
 | Game GUI | Status bar, disaster warning, health bar, survivors list, Compass map vote, item buttons. |
@@ -122,6 +127,8 @@ src/maps.js                the 23 maps
 src/disasters/*.js         one module per disaster, same interface (host decides, everyone plays it)
 src/round.js               RoundManager
 src/bots.js                simulated players
+src/nav.js                 bots' walk grid and A* pathfinding
+tools/stamp.mjs            stamps a new build id (cache busting) before a commit
 src/ui.js, data.js         HUD and saved data/badges
 src/effects.js, audio.js   sky/weather/particles and synthesized sound
 ```

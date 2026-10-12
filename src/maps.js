@@ -125,7 +125,7 @@ export const MAPS = [
         for (const o of [-2.2, 2.2]) b.box(-74, 0.4, tz + o - 0.3, 74, 1.1, tz + o + 0.3, BC.darkStone, 'metal');
       }
       // platform
-      b.box(-60, 0, -38, 60, 3, -24, BC.mediumStone, 'concrete');
+      b.box(-60, 0, -41.9, 60, 3, -24, BC.mediumStone, 'concrete');   // runs right up to the train
       for (let x = -50; x <= 50; x += 20) for (const z of [-36, -26]) b.block(x, 3, z, 1.2, 12, 1.2, BC.darkStone, 'metal');
       b.box(-56, 15, -39, 56, 16, -23, BC.brightGreen, 'metal');
       b.bench(-30, -31, 0); b.bench(0, -31, 0); b.bench(30, -31, 0);
@@ -137,7 +137,7 @@ export const MAPS = [
       for (let c = 0; c < 3; c++) {
         const x = -40 + c * 26;
         b.box(x - 11, 1.1, -50, x + 11, 3, -42, BC.darkStone, 'metal');
-        b.building({ x, z: -46, w: 22, d: 8, floors: 1, fh: 9, y: 3, color: c === 0 ? BC.brightRed : BC.mauve, mat: 'metal', floorColor: BC.darkStone, roof: 'flat', parapet: false, spacing: 5, winW: 3, winH: 3, door: 'N', noStairs: true, roofColor: BC.darkStone, groundTile: false });
+        b.building({ x, z: -46, w: 22, d: 8, floors: 1, fh: 9, y: 3, color: c === 0 ? BC.brightRed : BC.mauve, mat: 'metal', floorColor: BC.darkStone, roof: 'flat', parapet: false, spacing: 5, winW: 3, winH: 3, door: 'S', noStairs: true, roofColor: BC.darkStone, groundTile: false });
       }
       // station building, coal loading dock on the 2nd floor
       b.building({
@@ -266,9 +266,9 @@ export const MAPS = [
       b.building({
         x: 0, z: -24, w: 40, d: 20, floors: 1, fh: 13, color: BC.white, mat: 'brick', trim: BC.brightRed, spacing: 7, winW: 5, winH: 6, floorColor: BC.mediumStone, floorMat: 'concrete', roofAccess: true,
         interior: () => {
-          b.box(-16, 0.3, -30, 0, 3.5, -28, BC.brightRed, 'wood');
-          b.block(-13, 3.5, -29, 2, 1.2, 1.4, BC.white, 'metal', { tags: ['fire'] });
-          b.block(-9, 3.5, -29, 2, 1.2, 1.4, BC.white, 'metal', { tags: ['fire'] });
+          b.box(-16, 0.3, -27.5, 0, 3.5, -25.5, BC.brightRed, 'wood');   // counter (clear of the stairs)
+          b.block(-13, 3.5, -26.5, 2, 1.2, 1.4, BC.white, 'metal', { tags: ['fire'] });
+          b.block(-9, 3.5, -26.5, 2, 1.2, 1.4, BC.white, 'metal', { tags: ['fire'] });
           for (const x of [6, 12]) b.box(x - 1, 0.3, -32, x + 1, 6, -20, BC.lightBlue, 'metal');
           b.block(16, 0.3, -31, 4, 8, 3, BC.brightBlue, 'glass', { tags: ['glass'] });
         },
@@ -342,6 +342,7 @@ export const MAPS = [
       b.box(-50, 0, -40, 50, hy, 30, BC.grass, 'grass');
       // stairs up the hill on the south side
       for (let i = 0; i < 8; i++) b.box(-8, 0, 30 + (7 - i) * 1.5, 8, i + 1, 30 + (8 - i) * 1.5, BC.mediumStone, 'concrete');
+      b.ramp(V(0, 0, 45), V(0, hy, 27));
       b.part({ pos: [-40, hy / 2, 37], size: [12, hy, 14], color: BC.grass, mat: 'grass', shape: 'wedge', rot: [0, 0, 0] });
       b.part({ pos: [40, hy / 2, 37], size: [12, hy, 14], color: BC.grass, mat: 'grass', shape: 'wedge', rot: [0, 0, 0] });
       const info = b.building({
@@ -404,7 +405,7 @@ export const MAPS = [
       b.box(7.6, by - 0.8, -2, tx - 5, by, 2, BC.darkStone, 'metal', { tags: ['fire'] });
       b.box(7.6, by, -2.2, tx - 5, by + 3, -2, BC.brightYellow, 'metal');
       b.spot('high', tx, 2 + 44.8, rz, [V(tx + 8, 2, rz), V(tx + 5.8, 2 + 44.8, rz), V(tx, 2 + 44.8, rz)]);
-      b.spot('high', 6, by, 6, [V(tx + 8, 2, rz), V(tx + 5.8, by, rz), V(tx, by, rz), V(10, by, 0), V(6, by, 6)]);
+      b.spot('high', 6, by, 6, [V(tx + 8, 2, rz), V(tx + 5.8, by, rz), V(tx, by, rz), V(6.2, by, 0), V(6, by, 6)]);
       ladderTo(b, -22, 2, -24, 12.4, [-19, 2, -24], [-28, 14, -24]);
       b.sign(-26, 10, 36.2, 12, 1.6, 'LAUNCH CONTROL', { bg: '#1b2a35' });
       // control bunker + launch button
@@ -593,13 +594,14 @@ export const MAPS = [
           // cafeteria on the 2nd floor
           const y = i.levelY(1);
           for (const x of [-20, -6, 8]) { b.table(x, y, -14, 10, 3, BC.mediumStone); b.bench(x, -16.5, 0, BC.mediumStone); }
-          trashCan(b, i.ix1 - 2, y, i.iz1 - 2, true);
+          trashCan(b, i.ix1 - 2, y, i.iz0 + 2, true);   // (kept out of the stairwell)
         },
       });
       b.sign(0, 9, 6.2, 16, 2.4, 'STATE PRISON', { bg: '#3a3f46' });
       // yard fence
       const F = 52;
-      for (const [a, c, d, e] of [[-F, 15, F, 15], [-F, 50, F, 50], [-F, 15, -F, 50], [F, 15, F, 50]]) {
+      // (a gate in the fence lines up with the prison door)
+      for (const [a, c, d, e] of [[-F, 15, -7, 15], [7, 15, F, 15], [-F, 50, F, 50], [-F, 15, -F, 50], [F, 15, F, 50]]) {
         const len = Math.hypot(d - a, e - c);
         const n = Math.round(len / 8);
         for (let k = 0; k <= n; k++) b.block(a + (d - a) * k / n, 0, c + (e - c) * k / n, 0.6, 14, 0.6, BC.darkStone, 'metal');
@@ -613,9 +615,9 @@ export const MAPS = [
         const x = sx * 58, z = 48;
         for (const [ox, oz] of [[-3, -3], [3, -3], [-3, 3], [3, 3]]) b.block(x + ox, 0, z + oz, 1, 22, 1, BC.darkStone, 'metal');
         b.block(x, 22, z, 9, 1, 9, BC.darkStone, 'metal');
-        b.block(x, 23, z, 9, 3, 0.4, BC.darkStone, 'metal');
-        for (const [ox, oz] of [[-4.2, -4.2], [4.2, -4.2], [-4.2, 4.2], [4.2, 4.2]]) b.block(x + ox, 23, z + oz, 0.5, 5, 0.5, BC.darkStone, 'metal');
-        b.block(x, 28, z, 10, 1, 10, BC.darkStone, 'metal');
+        b.block(x, 23, z + 4.3, 9, 3, 0.4, BC.darkStone, 'metal');   // half wall on the outer edge
+        for (const [ox, oz] of [[-4.2, -4.2], [4.2, -4.2], [-4.2, 4.2], [4.2, 4.2]]) b.block(x + ox, 23, z + oz, 0.5, 6.5, 0.5, BC.darkStone, 'metal');
+        b.block(x, 29.5, z, 10, 1, 10, BC.darkStone, 'metal');   // high enough to step off the ladder under it
         b.truss(x - sx * 5.6, 0, z, 23.2);
         b.spot('high', x, 23, z, [V(x - sx * 8, 0, z), V(x - sx * 5.6, 23, z), V(x, 23, z)]);
       }
@@ -686,7 +688,7 @@ export const MAPS = [
       b.truss(39.5, 0, -30, 36.6);
       // pipes
       b.part({ pos: [-23, 10, -14], size: [2, 30, 2], color: BC.brightYellow, mat: 'metal', shape: 'cyl', rot: [0, 0, 90] });
-      b.part({ pos: [6, 6, -30], size: [2, 24, 2], color: BC.brightYellow, mat: 'metal', shape: 'cyl', rot: [0, 0, 90] });
+      b.part({ pos: [6, 7.5, -30], size: [2, 24, 2], color: BC.brightYellow, mat: 'metal', shape: 'cyl', rot: [0, 0, 90] });
       for (const x of [-30, -10, 10]) b.block(x, 0, -14, 1, 10, 1, BC.darkStone, 'metal');
       // chimney + boiler
       b.cyl(40, 0, 25, 9, 72, BC.brightRed, 'brick');
@@ -871,7 +873,7 @@ export const MAPS = [
       const colors = [BC.white, BC.lightBlue, BC.brickYellow, BC.institutionalWhite, BC.sand, BC.pastelBlue, BC.white, BC.nougat];
       for (let i = 0; i < 8; i++) {
         const x = -48 + (i % 4) * 32, z = i < 4 ? -30 : 22;
-        b.building({ x, z, w: 24, d: 11, floors: 1, fh: 9, color: colors[i], mat: 'metal', roof: 'flat', parapet: false, roofColor: BC.mediumStone, roofMat: 'metal', spacing: 6, winW: 3, winH: 3, door: i < 4 ? 'S' : 'N', doorX: -6, doorW: 3, trim: BC.brightRed, noStairs: true, y: 1 });
+        b.building({ x, z, w: 24, d: 11, floors: 1, fh: 9, color: colors[i], mat: 'metal', roof: 'flat', parapet: false, roofColor: BC.mediumStone, roofMat: 'metal', spacing: 6, winW: 3, winH: 3, door: i < 4 ? 'S' : 'N', doorX: -6, doorW: 4, trim: BC.brightRed, noStairs: true, y: 1 });
         for (const ox of [-8, 8]) b.block(x + ox, 0, z, 2, 1, 9, BC.darkStone, 'concrete');
       }
       // water tower + tree (fire)
