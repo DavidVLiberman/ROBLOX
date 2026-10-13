@@ -26,10 +26,12 @@ export class CameraController {
     this.pitch = clamp(this.pitch - input.mouseDY * sens * (this.inverted ? -1 : 1), -1.45, 1.35);
     // "Follow" camera mode swings around behind the character while walking
     const p = this.game.player;
+    // (but not while walking toward the camera: swinging round would turn "back" into
+    // "forward" and the character would spin on the spot instead of walking back)
     if (this.follow && p && p.alive && !input.dragging && !input.shiftLock && p.hSpeed > 2) {
       let d = p.yaw - this.yaw;
       d = Math.atan2(Math.sin(d), Math.cos(d));
-      this.yaw += d * Math.min(1, dt * 1.5);
+      if (Math.abs(d) < 1.75) this.yaw += d * Math.min(1, dt * 1.5);
     }
     if (input.down('arrowleft')) this.yaw += dt * 2.6;
     if (input.down('arrowright')) this.yaw -= dt * 2.6;

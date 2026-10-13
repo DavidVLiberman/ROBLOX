@@ -92,7 +92,8 @@ const builders = {
   slate(ctx, s) {
     ctx.fillStyle = '#d8d8d8'; ctx.fillRect(0, 0, s, s);
     for (let i = 0; i < 26; i++) {
-      ctx.fillStyle = `rgba(${Math.random() < .5 ? 255 : 90},${Math.random() < .5 ? 255 : 90},${Math.random() < .5 ? 255 : 90},0.12)`;
+      const v = Math.random() < .5 ? 255 : 90;   // grey stone (no coloured blotches)
+      ctx.fillStyle = `rgba(${v},${v},${v},0.12)`;
       ctx.beginPath();
       ctx.moveTo(Math.random() * s, Math.random() * s);
       for (let k = 0; k < 4; k++) ctx.lineTo(Math.random() * s, Math.random() * s);
@@ -170,6 +171,81 @@ function triplanar(material, scale, edge = 0.8) {
   return material;
 }
 
+// Molten rock: dark crust plates with glowing cracks between them (Voronoi cells
+// on a torus, so the texture tiles without seams).
+let lavaTex = null;
+function lavaTexture(size = 256) {
+  if (lavaTex) return lavaTex;
+  const [c, ctx] = canvas(size);
+  const img = ctx.createImageData(size, size), px = img.data;
+  const pts = [];
+  for (let i = 0; i < 14; i++) pts.push([Math.random() * size, Math.random() * size, 0.75 + Math.random() * 0.5]);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    let d1 = 1e9, d2 = 1e9, cell = 0;
+    for (let i = 0; i < pts.length; i++) {
+      let dx = Math.abs(x - pts[i][0]), dy = Math.abs(y - pts[i][1]);
+      if (dx > size / 2) dx = size - dx;
+      if (dy > size / 2) dy = size - dy;
+      const dd = dx * dx + dy * dy;
+      if (dd < d1) { d2 = d1; d1 = dd; cell = i; } else if (dd < d2) d2 = dd;
+    }
+    const edge = Math.sqrt(d2) - Math.sqrt(d1);              // distance to the crack
+    const width = 12 + 6 * Math.sin(x * 0.07 + y * 0.05);   // cracks swell and narrow
+    const t = Math.max(0, 1 - edge / width) ** 1.5;           // 1 in the crack, 0 on the crust
+    const halo = Math.max(0, 1 - edge / (width * 2.6)) ** 2;  // crust still glowing near a crack
+    const crust = pts[cell][2] * (0.88 + Math.random() * 0.24);
+    const k = (y * size + x) * 4;
+    px[k] = (70 + 90 * halo) * crust * (1 - t) + 255 * Math.min(1, t * 1.6);
+    px[k + 1] = (18 + 22 * halo) * crust * (1 - t) + 240 * t ** 1.7;
+    px[k + 2] = 10 * crust * (1 - t) + 130 * t ** 4;
+    px[k + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  lavaTex = new THREE.CanvasTexture(c);
+  lavaTex.wrapS = lavaTex.wrapT = THREE.RepeatWrapping;
+  lavaTex.colorSpace = THREE.SRGBColorSpace;
+  lavaTex.anisotropy = 4;
+  return lavaTex;
+}
+
+// Lava shader: world-scale texture like the other materials, glowing from the cracks,
+// the crust creeping slowly and the glow breathing. Instance colour dims it as it cools.
+const lavaUniforms = { uTexScale: { value: 10 }, uTime: { value: 0 } };
+function lavaMaterial() {
+  const m = new THREE.MeshStandardMaterial({ color: 0xffffff, map: lavaTexture(), emissive: 0xffffff, roughness: 0.8 });
+  m.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, lavaUniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vTriPos;\nvarying vec3 vTriNormal;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vec3 triScale = vec3(1.0);
+        #ifdef USE_INSTANCING
+          triScale = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
+        #endif
+        vTriPos = position * triScale;
+        vTriNormal = normal;`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vTriPos;\nvarying vec3 vTriNormal;\nuniform float uTexScale;\nuniform float uTime;')
+      .replace('#include <map_fragment>', `
+        vec3 an = abs(vTriNormal);
+        bool fx = an.x > an.y && an.x > an.z;
+        bool fy = !fx && an.y > an.z;
+        vec2 tuv = (fx ? vTriPos.zy : (fy ? vTriPos.xz : vTriPos.xy)) / uTexScale;
+        tuv += vec2(0.011, -0.027) * uTime;
+        vec4 lava = texture2D(map, tuv);
+        diffuseColor *= lava;`)
+      .replace('#include <emissivemap_fragment>', `
+        float breathe = 0.8 + 0.2 * sin(uTime * 1.7 + (tuv.x - tuv.y) * 9.0);
+        totalEmissiveRadiance = (lava.rgb * lava.rgb * 2.2 + lava.rgb * vec3(0.35, 0.12, 0.0) + vec3(0.08, 0.012, 0.0)) * breathe;
+        #ifdef USE_COLOR
+          totalEmissiveRadiance *= vColor;
+        #endif`);
+  };
+  m.customProgramCacheKey = () => 'lava';
+  return m;
+}
+export function tickLava(t) { lavaUniforms.uTime.value = t % 1000; }
+
 const matCache = {};
 export function getMaterial(kind) {
   if (matCache[kind]) return matCache[kind];
@@ -178,6 +254,8 @@ export function getMaterial(kind) {
     m = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, roughness: 0.05, metalness: 0.3, depthWrite: false });
   } else if (kind === 'neon') {
     m = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  } else if (kind === 'lava') {
+    m = lavaMaterial();
   } else if (kind === 'forcefield') {
     m = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, depthWrite: false });
   } else if (kind === 'truss') {

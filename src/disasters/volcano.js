@@ -1,11 +1,14 @@
 import * as THREE from 'three';
 import { V, isHost, locals, emit, toArr, fromArr } from './common.js';
-import { rand } from '../util.js';
+import { rand, clamp } from '../util.js';
+import { getMaterial, tickLava } from '../materials.js';
 
 const H = 85, D = 120, R = 212;        // size and distance from the island centre
 const RISE = 12, ERUPT = 15;            // seconds after the warning
-const LAVA_COLORS = [0xff3d00, 0xff7a00, 0xffc400, 0xe02000];
-const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+// tints of the lava material: from white-hot to deep red
+const LAVA_COLORS = [0xffffff, 0xffe2c4, 0xffc89a, 0xff9a70];
+const CRUST = new THREE.Color(0x3a0d05);
+const COOL = 4;                         // seconds a landed block takes to dim before it turns to obsidian
 
 // The volcano rises out of the sea next to the island with the warning and starts
 // erupting about 15 seconds later. It throws big red and yellow lava blocks that smash
@@ -32,13 +35,30 @@ export default {
       g.trackTemp(p);
       return p;
     };
-    mk({ pos: [st.pos.x, -H, st.pos.z], size: [D, H, D], color: 0x5a524c, mat: 'slate', shape: 'frustum' }, H / 2);
-    mk({ pos: [st.pos.x, -H, st.pos.z], size: [D * 0.55, H * 0.35, D * 0.55], color: 0x3a3330, mat: 'slate', shape: 'frustum' }, H * 0.84);
-    mk({ pos: [st.pos.x, -H, st.pos.z], size: [D * 0.22, 1, D * 0.22], color: 0xff5a00, mat: 'neon', shape: 'cyl' }, H + 0.3);
+    mk({ pos: [st.pos.x, -H, st.pos.z], size: [D, H, D], color: 0x57504b, mat: 'slate', shape: 'frustum' }, H / 2);
+    mk({ pos: [st.pos.x, -H, st.pos.z], size: [D * 0.55, H * 0.35, D * 0.55], color: 0x35302d, mat: 'slate', shape: 'frustum' }, H * 0.84);
+    mk({ pos: [st.pos.x, -H, st.pos.z], size: [D * 0.22, 1.2, D * 0.22], color: 0xffffff, mat: 'lava', shape: 'cyl' }, H + 0.3);
+    // lava running down the slopes, mostly on the side facing the island
+    for (const off of [-0.85, -0.3, 0.3, 0.9, 2.5]) this.stream(mk, st, a + Math.PI + off);
     st.rise = Math.min(1, st.t / RISE);
     this.place(g, st);
     g.audio.loop('rumble', true, { type: 'brown', freq: 120, gain: 0.5 });
     g.shakeAll(0.6, RISE);
+  },
+  // a lava stream from the crater rim down the cone: one strip on the steep top,
+  // one on the lower slope, lying on the surface (radius of each cone at height y)
+  stream(mk, st, ang) {
+    const c = Math.cos(ang), s = Math.sin(ang);
+    const upper = (y) => D * 0.55 * 0.15 + (H * 1.015 - y) * (D * 0.55 * 0.35) / (H * 0.35);
+    const lower = (y) => D * 0.15 + (H - y) * (D * 0.35) / H;
+    for (const [rad, y0, y1, w] of [[upper, H + 0.6, H * 0.675, 4.5], [lower, H * 0.66, H * 0.22, 3.5]]) {
+      const r0 = rad(y0), r1 = rad(y1), dr = r1 - r0, dy = y1 - y0, len = Math.hypot(dr, dy);
+      const z = V(c * dr / len, dy / len, s * dr / len), x = V(s, 0, -c), y = new THREE.Vector3().crossVectors(z, x);
+      const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
+      // sunk a little into the faceted cone so it never floats above it
+      const rm = (r0 + r1) / 2 - 0.2 * (-dy / len), ym = (y0 + y1) / 2 - 0.2 * (dr / len);
+      mk({ pos: [st.pos.x + c * rm, -H, st.pos.z + s * rm], size: [w, 1.6, len + 1.5], color: 0xffd9b8, mat: 'lava', rot: q, collide: false }, ym);
+    }
   },
   place(g, st) {
     const base = -H + H * st.rise;
@@ -63,15 +83,14 @@ export default {
   onEvent(g, st, ev) {
     if (ev.k !== 'b') return;
     const color = LAVA_COLORS[ev.c] || LAVA_COLORS[0];
-    const mesh = new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.9, roughness: 0.6 }));
-    mesh.scale.setScalar(ev.r * 2);
-    mesh.castShadow = true;
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(ev.r * 2, ev.r * 2, ev.r * 2), getMaterial('lava'));
     g.scene.add(mesh);
     st.blobs.push({ mesh, pos: this.crater(st), vel: fromArr(ev.v), r: ev.r, color, pierce: 3, spin: V(rand() - .5, rand() - .5, rand() - .5).multiplyScalar(5) });
     if (Math.random() < 0.3) g.audio.lava(this.crater(st));
   },
   update(g, st, dt) {
     st.t += dt;
+    tickLava(g.time);
     if (st.rise < 1) {
       st.rise = Math.min(1, st.t / RISE);
       this.place(g, st);
@@ -111,8 +130,9 @@ export default {
       b.vel.y -= 60 * dt;
       const step = b.vel.clone().multiplyScalar(dt);
       b.mesh.rotation.x += b.spin.x * dt; b.mesh.rotation.z += b.spin.z * dt;
-      if (Math.random() < 0.5) g.effects.puff(b.pos.clone(), 0xff7a20, b.r * 2.4, 0.4);
-      if (Math.random() < 0.3) g.effects.puff(b.pos.clone(), 0x3a3634, b.r * 3, 1.4, V(0, 3, 0));
+      // a thin trail: glowing embers and a wisp of smoke
+      if (Math.random() < 0.35) g.effects.puff(b.pos.clone(), 0xff8a2a, b.r * 0.9, 0.3);
+      if (Math.random() < 0.15) g.effects.puff(b.pos.clone(), 0x5a5450, b.r * 1.6, 1.1, V(0, 2, 0));
       for (const c of locals(g)) if (c.alive && c.center.distanceTo(b.pos) < b.r + 1.8) c.die('lava');
       let landed = null;
       if (b.vel.y < 0) {
@@ -135,12 +155,12 @@ export default {
         } else if (b.pos.y + step.y <= b.r) landed = V(b.pos.x + step.x, 0, b.pos.z + step.z);
       }
       if (landed) {
-        g.scene.remove(b.mesh); b.mesh.material.dispose();
+        g.scene.remove(b.mesh); b.mesh.geometry.dispose();
         st.blobs.splice(i, 1);
         if (!g.island.onIsland(landed) || landed.y < -2) { g.effects.puff(landed.clone().setY(-4), 0xdddddd, 10, 2, V(0, 8, 0)); continue; }
-        const part = g.world.addPart({ pos: [landed.x, landed.y + b.r, landed.z], size: [b.r * 2, b.r * 2, b.r * 2], color: b.color, mat: 'neon', rot: [0, rand() * 90, 0], tags: ['lava', 'indestructible'] });
+        const part = g.world.addPart({ pos: [landed.x, landed.y + b.r, landed.z], size: [b.r * 2, b.r * 2, b.r * 2], color: b.color, mat: 'lava', rot: [0, rand() * 90, 0], tags: ['lava', 'indestructible'] });
         g.trackTemp(part);
-        st.blocks.push({ part, cool: g.time + 10 + rand() * 4 });
+        st.blocks.push({ part, hot: new THREE.Color(b.color), cool: g.time + 10 + rand() * 4 });
         g.effects.burst(landed, { size: b.r * 3, life: 0.5 });
         g.audio.lava(landed);
         continue;
@@ -162,6 +182,9 @@ export default {
         continue;
       }
       if (bl.obsidian) continue;
+      // the glow dies down and the crust darkens before it sets
+      const k = clamp((bl.cool - g.time) / COOL, 0, 1);
+      if (k < 1) g.world.setColor(bl.part, CRUST.clone().lerp(bl.hot, k * k), true);
       const b = g.world.aabb(bl.part);
       for (const c of locals(g)) {
         if (!c.alive) continue;
@@ -170,7 +193,7 @@ export default {
     }
   },
   stop(g, st) {
-    for (const b of st.blobs || []) { g.scene.remove(b.mesh); b.mesh.material.dispose(); }
+    for (const b of st.blobs || []) { g.scene.remove(b.mesh); b.mesh.geometry.dispose(); }
     st.blobs = [];
     st.erupting = false;
     g.audio.loop('rumble', false);

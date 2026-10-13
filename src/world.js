@@ -74,7 +74,7 @@ class Pool {
     mesh.setColorAt(0, new THREE.Color(1, 1, 1));
     mesh.frustumCulled = false;
     const transparent = isTransparent(this.mat);
-    mesh.castShadow = !transparent && this.mat !== 'neon';
+    mesh.castShadow = !transparent && this.mat !== 'neon' && this.mat !== 'lava';
     mesh.receiveShadow = !transparent;
     if (transparent) mesh.renderOrder = 2;
     if (this.mesh) {
@@ -437,6 +437,18 @@ export class World {
       object: this.byCollider.get(hit.collider.handle),
       collider: hit.collider,
     };
+  }
+
+  // does an upright capsule (centre x,y,z) overlap any solid brick?
+  overlapsCapsule(x, y, z, halfHeight, radius) {
+    let hit = false;
+    this._capsule ||= new RAPIER.Capsule(halfHeight, radius);
+    if (this._capsule.halfHeight !== halfHeight || this._capsule.radius !== radius) this._capsule = new RAPIER.Capsule(halfHeight, radius);
+    this.physics.intersectionsWithShape({ x, y, z }, { x: 0, y: 0, z: 0, w: 1 }, this._capsule, (c) => {
+      if (this.byCollider.get(c.handle)?.size) { hit = true; return false; }
+      return true;
+    }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, IG_QUERY_PARTS);
+    return hit;
   }
 
   partsNear(center, radius, filter) {

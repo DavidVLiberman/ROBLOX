@@ -61,8 +61,9 @@ export class Island {
         P({ pos: [tx + Math.cos(a) * rad, y, tz + Math.sin(a) * rad], size: [0.5, h, len], color, mat, rot: [0, -a * 180 / Math.PI, 0], tags });
       }
     };
-    ring(r - 0.3, top + 1.75, 3.5, 40, 0xa9d4f5, 'glass', ['glass']);
-    ring(r - 0.3, top + 3.6, 0.3, 40, white, 'metal');
+    // (tall enough that you can't just jump over it back onto the map)
+    ring(r - 0.3, top + 4.5, 9, 40, 0xa9d4f5, 'glass', ['glass']);
+    ring(r - 0.3, top + 9.15, 0.3, 40, white, 'metal');
     // second storey on eight white columns
     // (no columns on the side facing the map, so nothing blocks the view)
     for (const deg of [0, 30, 150, 180, 225, 270, 315]) {
@@ -91,8 +92,8 @@ export class Island {
     // roof railing, open where the stairs arrive
     const landA = (sx) => Math.atan2(runZ0 - steps - 2 - tz, sx * (upperR - 0.5));
     const nearLanding = (a) => [landA(-1), landA(1)].some(b => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))) < 0.22);
-    ring(upperR - 0.3, roof + 1.75, 3.5, 30, 0xa9d4f5, 'glass', ['glass'], nearLanding);
-    ring(upperR - 0.3, roof + 3.6, 0.3, 30, white, 'metal', [], nearLanding);
+    ring(upperR - 0.3, roof + 4.5, 9, 30, 0xa9d4f5, 'glass', ['glass'], nearLanding);
+    ring(upperR - 0.3, roof + 9.15, 0.3, 30, white, 'metal', [], nearLanding);
 
     // spawn area: two SpawnLocations on the first floor, on the side facing the map
     for (const sx of [-1, 1]) P({ pos: [tx + sx * 6, top + 0.1, tz + 22], size: [7, 0.2, 5], color: grey, mat: 'plastic' });
@@ -146,8 +147,6 @@ export class Island {
     P({ pos: [wmx, wy + 8.2, wmz], size: [0.5, 1.6, 0.5], color: 0x7fd6ff, mat: 'metal', shape: 'cyl' });
     this.weatherMachine = new THREE.Vector3(wmx, wy, wmz);
 
-    // where bots walk to leave the lobby, and where they wander inside it
-    this.rampBottom = V(tx, 0, tz + r + 14);
     this.buildLab(P);
   }
 

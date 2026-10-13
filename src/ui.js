@@ -9,6 +9,7 @@ import { BADGES } from './data.js';
 import { makeToolModel } from './avatar.js';
 import { filterChat } from './chatfilter.js';
 import { botReply } from './bots.js';
+import { isTyping } from './input.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -220,7 +221,7 @@ export class UI {
     });
     $('chat-send').onclick = () => this.sendChat();
     addEventListener('keydown', (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (isTyping(e.target)) return;
       if (e.key === '/' && this.g.started && !this.hubOpen()) {
         e.preventDefault();
         if (this.el.chat.classList.contains('hidden')) $('tb-chat').click();
@@ -392,7 +393,7 @@ export class UI {
   // ============================== backpack ==============================
   bindBackpack() {
     addEventListener('keydown', (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (isTyping(e.target)) return;
       if (e.key === '`' || e.key === '~') { e.preventDefault(); this.toggleInventory(); }
       if (e.key === 'Tab') {
         e.preventDefault();
@@ -528,8 +529,7 @@ export class UI {
 
   // anything that should freeze character input
   blocking() {
-    const a = document.activeElement;
-    return this.hubOpen() || this.el.purchase.classList.contains('show') || (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA'));
+    return this.hubOpen() || this.el.purchase.classList.contains('show') || isTyping();
   }
 
   // ============================== Esc menu ==============================
@@ -571,7 +571,7 @@ export class UI {
     $('leave-yes').onclick = () => location.reload();
     this.el.hub.addEventListener('mousedown', (e) => { if (e.target === this.el.hub) this.toggleHub(false); });
     addEventListener('keydown', (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (isTyping(e.target)) return;
       if (!g.started) return;
       const k = e.key.toLowerCase();
       if (k === 'escape') {

@@ -360,12 +360,7 @@ export class BotBrain {
       if (this.follow(dt) !== 'moving') { this.wait -= dt; if (this.wait <= 0) this.lobbyWander(); }
       return;
     }
-    if (!c.inRound) {
-      // spectator who walked off the tower: head back toward it
-      if (this.mode !== 'spectate') { this.mode = 'spectate'; this.setPath(this.route([g.island.rampBottom])); }
-      this.follow(dt);
-      return;
-    }
+    if (!c.inRound) return;   // (the game puts anyone out of the round back in the lobby)
     if (phase === 'roam') {
       if (this.mode !== 'roam') { this.mode = 'roam'; this.explore(); }
       // weather hint before the warning: careful players start moving early

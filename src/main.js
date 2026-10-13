@@ -122,6 +122,7 @@ class Game {
     const go = () => {
       const nm = document.getElementById('name-input').value.trim().replace(/[^\w ]/g, '').slice(0, 20);
       if (nm) { this.player.name = nm; this.data.d.name = nm; this.data.save(); }
+      document.getElementById('name-input').blur();   // or the keys keep typing into it
       document.getElementById('start').classList.add('hide');
       this.audio.start();
       this.ui.applySettings();
@@ -357,6 +358,20 @@ class Game {
     }
   }
 
+  // Anyone who isn't in the round (died, joined late, waiting for the next one) stays in
+  // the Lobby Tower: jump off it, float off with the balloon or leap from the stairs
+  // and you're back on the spawn pads.
+  keepInLobby(c) {
+    if (!c.alive || c.inRound || c.remote || c.seat || this.island.inTower(c.pos)) return;
+    c.teleport(this.island.randomSpawn());
+    c.yaw = 0;
+    c.gravityScale = 1;
+    if (c.isPlayer) {
+      this.camController.yaw = 0; this.camController.pitch = -0.25;
+      if ((this.lobbyWarn || 0) < this.time) { this.lobbyWarn = this.time + 4; this.ui.toast(this.round.phase === 'intermission' ? 'Stay in the Lobby until the next round starts!' : "You're out this round. Watch from the Lobby or press Spectate!"); }
+    }
+  }
+
   // ---------- spectating from the lobby ----------
   spectateTargets() { return this.chars.filter(c => c !== this.player && c.alive && c.inRound); }
   spectate(dir) {
@@ -519,7 +534,7 @@ class Game {
     this.acc += dt;
     let n = 0;
     while (this.acc >= STEP && n < 4) {
-      for (const c of this.chars) c.step(STEP);
+      for (const c of this.chars) { c.step(STEP); this.keepInLobby(c); }
       stepVehicles(this, STEP);
       this.map?.extras.update?.(STEP);
       if (this.world.replica) this.world.stepReplicas(performance.now(), STEP);

@@ -1,4 +1,26 @@
 // Keyboard / mouse / touch input, Roblox default control scheme.
+
+// Keys are tracked by physical position (e.code): a key is always let go of under the
+// same name it was pressed with, even if Shift/Option/a layout change turned it into
+// another character in between (a key that never lets go walks you forward forever
+// and cancels S, so you can't walk back).
+const keyName = (e) => {
+  const c = e.code || '';
+  if (c.startsWith('Key')) return c.slice(3).toLowerCase();
+  if (c.startsWith('Digit')) return c.slice(5);
+  if (c === 'Space') return ' ';
+  if (c.startsWith('Arrow')) return c.toLowerCase();
+  return (e.key || '').toLowerCase();
+};
+
+// Is the player typing in a text box? A box in a closed panel (the name box on the
+// start screen, inventory search) that still has focus doesn't count: let go of it.
+export function isTyping(el = document.activeElement) {
+  if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return false;
+  if (!el.getClientRects().length || el.closest('.hide')) { el.blur(); return false; }
+  return true;
+}
+
 export class Input {
   constructor(canvas) {
     this.canvas = canvas;
@@ -15,16 +37,21 @@ export class Input {
     this.shiftLockEnabled = true;
 
     addEventListener('keydown', (e) => {
-      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
-      const k = e.key.toLowerCase();
+      if (isTyping(e.target)) return;
+      const k = keyName(e);
       if (!this.keys.has(k)) this.pressed.add(k);
       this.keys.add(k);
       this.lastActivity = performance.now();
       if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'tab'].includes(k)) e.preventDefault();
-      if (k === 'shift' && !e.repeat) this.toggleShiftLock();
+      if (e.key === 'Shift' && !e.repeat) this.toggleShiftLock();
     });
-    addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
+    addEventListener('keyup', (e) => {
+      this.keys.delete(keyName(e));
+      // macOS never sends key-ups for keys released while Cmd is held
+      if (e.key === 'Meta') this.keys.clear();
+    });
     addEventListener('blur', () => this.keys.clear());
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.keys.clear(); });
 
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     canvas.addEventListener('mousedown', (e) => {

@@ -310,6 +310,12 @@ export class Character {
       mv.x += this.groundPart.lastDelta.x; mv.y += this.groundPart.lastDelta.y; mv.z += this.groundPart.lastDelta.z;
     }
     this.pos.x += mv.x; this.pos.y += mv.y; this.pos.z += mv.z;
+    // walking but not getting anywhere: if we're wedged inside a brick (debris landed
+    // on us, a wall fell over us) the controller can't get out by itself
+    if (mlen > 0.3 && !climb && Math.hypot(mv.x, mv.z) < speed * mlen * dt * 0.1) {
+      this.stuckT = (this.stuckT || 0) + dt;
+      if (this.stuckT > 0.35) { this.stuckT = 0; this.unwedge(); }
+    } else this.stuckT = 0;
     this.body.setNextKinematicTranslation({ x: this.pos.x, y: this.pos.y + HALF, z: this.pos.z });
 
     // external velocity decays faster on the ground
@@ -375,6 +381,30 @@ export class Character {
     else if (!this.grounded) this.state = this.vel.y > 0 ? 'jump' : 'fall';
     else if (hs > 1.5 && mlen > 0.1) this.state = 'walk';
     else this.state = 'idle';
+  }
+
+  // Pop out of a brick we're stuck inside: the nearest free spot around us (the way
+  // we want to go first) or just above. Touching a wall or the floor doesn't count.
+  unwedge() {
+    const w = this.game.world;
+    const free = (x, y, z) => !w.overlapsCapsule(x, y + HALF + 0.15, z, 1.4, 0.9);
+    const p = this.pos;
+    if (free(p.x, p.y, p.z)) return false;
+    const m = Math.hypot(this.move.x, this.move.z) || 1, mx = this.move.x / m, mz = this.move.z / m;
+    for (const r of [0.8, 1.6, 2.5, 3.5]) {
+      for (let i = 0; i < 12; i++) {
+        // 0, +30, -30, +60 ... degrees from the direction we're walking
+        const a = (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 6, ca = Math.cos(a), sa = Math.sin(a);
+        const x = p.x + (mx * ca - mz * sa) * r, z = p.z + (mx * sa + mz * ca) * r;
+        for (const dy of [0, 0.8]) if (free(x, p.y + dy, z)) { this.nudge(x, p.y + dy, z); return true; }
+      }
+      if (free(p.x, p.y + r, p.z)) { this.nudge(p.x, p.y + r, p.z); return true; }
+    }
+    return false;
+  }
+  nudge(x, y, z) {
+    this.pos.set(x, y, z);
+    this.collider.setTranslation({ x, y: y + HALF, z });
   }
 
   // Height of a step right in front of the feet in the move direction (0 = none).
