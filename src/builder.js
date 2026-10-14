@@ -445,27 +445,40 @@ export class MapBuilder {
   truss(x, y, z, h) { return this.block(x, y, z, 2, h, 2, BC.mediumStone, 'truss', { tags: ['truss'] }); }
 
   // drivable (optional) car: returns vehicle record
-  car(x, z, rotY = 0, color = BC.brightRed, { drivable = true, fire = false } = {}) {
+  // Any vehicle: its parts stay anchored and move as a group. build(add) adds the
+  // body with add(lx, ly, lz, sx, sy, sz, color, mat, shape, extraRot, tags) -- x/z
+  // relative to the vehicle, y absolute -- and returns the driver's seat part (or
+  // [driverSeat, ...passengerSeats]). opts: kind, drivable, maxSpeed (studs/s),
+  // accel, turn (steering rate), rail: { pts: [Vector3...], loop } to run on tracks.
+  vehicle(x, z, rotY, opts, build) {
+    const { kind = 'car', drivable = true, maxSpeed = 70, accel = 34, turn = 1, rail = null, tags: extraTags = [] } = opts || {};
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rotY * DEG, 0));
     const parts = [];
     const add = (lx, ly, lz, sx, sy, sz, col, mat, shape = 'box', extraRot = null, tags = []) => {
       const off = V(lx, ly, lz).applyQuaternion(q);
-      let rq = q.clone();
-      if (extraRot) rq.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(...extraRot.map(a => a * DEG))));
-      const p = this.part({ pos: [x + off.x, ly, z + off.z], size: [sx, sy, sz], color: col, mat, shape, rot: rq, tags: ['car', 'flammable', ...tags] });
-      p.local = { off: V(lx, ly, lz), rot: extraRot ? new THREE.Quaternion().setFromEuler(new THREE.Euler(...extraRot.map(a => a * DEG))) : new THREE.Quaternion() };
+      const lr = extraRot ? new THREE.Quaternion().setFromEuler(new THREE.Euler(...extraRot.map(a => a * DEG))) : new THREE.Quaternion();
+      const p = this.part({ pos: [x + off.x, ly, z + off.z], size: [sx, sy, sz], color: col, mat, shape, rot: q.clone().multiply(lr), tags: [kind, 'flammable', ...extraTags, ...tags] });
+      p.local = { off: V(lx, ly, lz), rot: lr };
       parts.push(p);
       return p;
     };
-    add(0, 2.2, 0, 5, 1.8, 10, color, 'metal', 'box', null, fire ? ['fire'] : []);
-    add(0, 3.9, -0.6, 4.6, 1.6, 5, 0xa9d4f5, 'glass', 'box', null, ['glass']);
-    add(0, 4.85, -0.6, 4.8, 0.3, 5.2, color, 'metal');
-    for (const [wx, wz] of [[-2.6, 3], [2.6, 3], [-2.6, -3], [2.6, -3]]) add(wx, 1.3, wz, 2.6, 0.9, 2.6, BC.reallyBlack, 'plastic', 'cyl', [0, 0, 90]);
-    const seat = add(-1, 3.25, 0.4, 1.8, 0.3, 1.8, BC.black, 'fabric', 'box', null, ['seat']);
-    const veh = { parts, seat, pos: V(x, 0, z), yaw: rotY * DEG, speed: 0, drivable, kind: 'car' };
-    seat.vehicle = veh;
+    let seats = build(add);
+    seats = Array.isArray(seats) ? seats : [seats];
+    const veh = { parts, seat: seats[0], passengers: seats.slice(1), pos: V(x, 0, z), yaw: rotY * DEG, speed: 0, drivable, kind, maxSpeed, accel, turn, rail: rail ? { pts: rail.pts.map(p => p.clone()), loop: !!rail.loop } : null };
+    seats[0].vehicle = veh;
+    for (const s of veh.passengers) s.passengerOf = veh;
     this.vehicles.push(veh);
     return veh;
+  }
+
+  car(x, z, rotY = 0, color = BC.brightRed, { drivable = true, fire = false } = {}) {
+    return this.vehicle(x, z, rotY, { kind: 'car', drivable, tags: ['car'] }, (add) => {
+      add(0, 2.2, 0, 5, 1.8, 10, color, 'metal', 'box', null, fire ? ['fire'] : []);
+      add(0, 3.9, -0.6, 4.6, 1.6, 5, 0xa9d4f5, 'glass', 'box', null, ['glass']);
+      add(0, 4.85, -0.6, 4.8, 0.3, 5.2, color, 'metal');
+      for (const [wx, wz] of [[-2.6, 3], [2.6, 3], [-2.6, -3], [2.6, -3]]) add(wx, 1.3, wz, 2.6, 0.9, 2.6, BC.reallyBlack, 'plastic', 'cyl', [0, 0, 90]);
+      return add(-1, 3.25, 0.4, 1.8, 0.3, 1.8, BC.black, 'fabric', 'box', null, ['seat']);
+    });
   }
 
   // Keep every staircase walkable: small props that ended up in a stair's walking

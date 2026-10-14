@@ -46,16 +46,26 @@ export function stepVehicles(game, dt) {
         steer = (i.down('a') ? 1 : 0) - (i.down('d') ? 1 : 0);
         if (i.touch.joy) { throttle = -i.touch.joyY; steer = -i.touch.joyX; }
       }
-      v.speed += throttle * 34 * dt;
+      const max = v.maxSpeed ?? 70;
+      v.speed += throttle * (v.accel ?? 34) * dt;
       v.speed *= Math.exp(-dt * (throttle ? 0.4 : 1.6));
-      v.speed = clamp(v.speed, -22, 70);
+      v.speed = clamp(v.speed, -Math.min(22, max), max);
       if (Math.abs(v.speed) < 0.05 && !throttle) {
         if (v.speed !== 0 || v.moving) { v.speed = 0; v.moving = false; sendState(game, v, vi, true); }
         for (const p of v.parts) p.lastDelta = null;
         return;
       }
       v.moving = true;
-      v.yaw += steer * dt * clamp(v.speed / 20, -1.6, 1.6);
+      if (v.rail) {
+        // trains and handcars: follow the track, steering does nothing
+        const at = railStep(v, v.speed * dt);
+        if (!at) { v.speed = 0; sendState(game, v, vi, true); return; }
+        v.pos.set(at.x, 0, at.z); v.yaw = at.yaw;
+        placeParts(game, v);
+        sendState(game, v, vi, false);
+        dir = new THREE.Vector3(Math.sin(v.yaw), 0, Math.cos(v.yaw)).multiplyScalar(Math.sign(v.speed) || 1);
+      } else {
+      v.yaw += steer * dt * clamp(v.speed / 20, -1.6, 1.6) * (v.turn ?? 1);
       const fwd = new THREE.Vector3(Math.sin(v.yaw), 0, Math.cos(v.yaw));
       const move = fwd.clone().multiplyScalar(v.speed * dt);
       // crash into things in front
@@ -74,6 +84,7 @@ export function stepVehicles(game, dt) {
       v.pos.copy(np);
       placeParts(game, v);
       sendState(game, v, vi, false);
+      }
     }
     // run people over (each machine checks the characters it simulates)
     if (Math.abs(v.speed) > 25) {
@@ -83,6 +94,38 @@ export function stepVehicles(game, dt) {
       }
     }
   });
+}
+
+// Move a rail vehicle ds studs along its track (a polyline, maybe a loop).
+// Returns its new position and heading, or null at the end of an open track.
+function railStep(v, ds) {
+  const r = v.rail, pts = r.pts, n = pts.length;
+  if (r.len === undefined) {
+    r.seg = []; r.len = 0;
+    for (let i = 0; i < (r.loop ? n : n - 1); i++) { const d = pts[i].distanceTo(pts[(i + 1) % n]); r.seg.push(d); r.len += d; }
+    // start where the vehicle was placed
+    let best = Infinity, acc = 0;
+    for (let i = 0; i < r.seg.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % n];
+      const t = clamp(((v.pos.x - a.x) * (b.x - a.x) + (v.pos.z - a.z) * (b.z - a.z)) / (r.seg[i] * r.seg[i] || 1), 0, 1);
+      const d = Math.hypot(a.x + (b.x - a.x) * t - v.pos.x, a.z + (b.z - a.z) * t - v.pos.z);
+      if (d < best) { best = d; r.s = acc + t * r.seg[i]; }
+      acc += r.seg[i];
+    }
+  }
+  let s = r.s + ds;
+  if (r.loop) s = ((s % r.len) + r.len) % r.len;
+  else if (s < 0 || s > r.len) return null;
+  r.s = s;
+  for (let i = 0, acc = 0; i < r.seg.length; i++) {
+    if (s <= acc + r.seg[i] || i === r.seg.length - 1) {
+      const a = pts[i], b = pts[(i + 1) % n], t = r.seg[i] ? (s - acc) / r.seg[i] : 0;
+      // keep the heading the way the vehicle faces (it may be reversing)
+      return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t, yaw: Math.atan2(b.x - a.x, b.z - a.z) };
+    }
+    acc += r.seg[i];
+  }
+  return null;
 }
 
 function sendState(game, v, vi, force) {
