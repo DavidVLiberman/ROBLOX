@@ -137,6 +137,7 @@ export class MapBuilder {
       windows = true, winW = 4, winH = 5, spacing = 8, door = 'S', doorX = 0, doorW = 5, glassColor = 0xa9d4f5,
       roofAccess = true, parapet = true, t = 1, stairColor = null, interior = null, noStairs = false, trim = null,
       y: by = 0, stairFire = false, groundTile = true, ladder = null, ladderSide = 'E', roofDetails = true, furnish = null,
+      extraHoles = [],   // [{ level, x0, x1, z0, z1 }]: atriums, roof hatches (level = floors is the roof)
     } = o;
     const trimColor = o.windowTrim ?? (trim ?? BC.institutionalWhite);
     const x0 = x - w / 2, x1 = x + w / 2, z0 = z - d / 2, z1 = z + d / 2;
@@ -164,6 +165,7 @@ export class MapBuilder {
     } else if (useTruss) {
       for (let k = 1; k <= flights; k++) (holes[k] ||= []).push({ x0: ix0, x1: ix0 + 6, z0: iz0, z1: iz0 + 6 });
     }
+    for (const h of extraHoles) (holes[h.level] ||= []).push(h);
     const levelY = (k) => by + k * fh;
     const top = by + floors * fh;
     // ground floor tiles
