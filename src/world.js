@@ -112,6 +112,15 @@ class Pool {
 }
 const ZERO_M = new THREE.Matrix4().makeScale(0, 0, 0);
 
+// [density, friction, elasticity] from Roblox's material table
+const MAT_PHYS = {
+  plastic: [0.7, 0.3, 0.5], studs: [0.7, 0.3, 0.5], neon: [0.7, 0.3, 0.2], forcefield: [0.7, 0.3, 0.2],
+  wood: [0.35, 0.48, 0.2], metal: [7.85, 0.4, 0.25], truss: [7.85, 0.4, 0.25], concrete: [2.4, 0.7, 0.2],
+  brick: [1.92, 0.8, 0.15], slate: [2.69, 0.4, 0.2], lava: [2.69, 0.4, 0.2], grass: [0.9, 0.4, 0.1],
+  sand: [1.6, 0.5, 0.05], glass: [2.4, 0.25, 0.2], fabric: [0.7, 0.35, 0.05], asphalt: [2.36, 0.8, 0.2],
+  ice: [0.92, 0.02, 0.15], water: [1, 0.3, 0.05],
+};
+
 let nextId = 1;
 export class Part {
   constructor() { this.id = nextId++; }
@@ -183,7 +192,7 @@ export class World {
     const bd = (part.anchored ? RAPIER.RigidBodyDesc.fixed() : RAPIER.RigidBodyDesc.dynamic())
       .setTranslation(o.pos[0], o.pos[1], o.pos[2])
       .setRotation({ x: rot.x, y: rot.y, z: rot.z, w: rot.w })
-      .setLinearDamping(0.05).setAngularDamping(0.3)
+      .setLinearDamping(0).setAngularDamping(0.05)   // no air drag in Roblox
       .setCanSleep(true);
     part.body = this.physics.createRigidBody(bd);
     const s = part.size;
@@ -207,8 +216,11 @@ export class World {
       }
       default: cd = RAPIER.ColliderDesc.cuboid(sh(s.x), sh(s.y), sh(s.z));
     }
-    cd.setDensity(o.density ?? (part.mat === 'metal' ? 1.4 : part.mat === 'wood' ? 0.5 : 0.8))
-      .setFriction(0.6).setRestitution(0.1)
+    // Roblox's physical properties per material (density, friction, elasticity);
+    // touching parts average them, like Roblox's weighted average with equal weights
+    const [dens, fric, elast] = MAT_PHYS[part.mat] || MAT_PHYS.plastic;
+    cd.setDensity(o.density ?? dens)
+      .setFriction(fric).setRestitution(elast)
       .setCollisionGroups(o.corpse ? IG_CORPSE : IG_PART)
       .setSolverGroups(o.corpse ? IG_CORPSE : IG_PART);
     if (!part.collide) cd.setSensor(true);
@@ -496,9 +508,8 @@ export class World {
       if (p.tags.has('indestructible')) continue;
       const t = p.body.translation();
       const d = new THREE.Vector3(t.x - center.x, t.y - center.y, t.z - center.z);
-      const dist = Math.max(1, d.length());
       d.normalize();
-      const f = power * clamp(1 - dist / (radius * 1.6), 0.15, 1);
+      const f = power;   // a Roblox Explosion pushes everything in its radius equally hard
       if (opts.destroyChance && Math.random() < opts.destroyChance && p.size.x * p.size.y * p.size.z < 400) { this.removePart(p); continue; }
       this.unanchor(p);
       this.push(p, { x: d.x * f, y: d.y * f + f * 0.4, z: d.z * f });

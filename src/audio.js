@@ -133,16 +133,11 @@ export class Audio {
   eat() { for (let i = 0; i < 3; i++) this.noise('white', 0.07, { filter: 'bandpass', freq: 2200, q: 3, gain: 0.3, delay: i * 0.12, ui: true }); }
   click() { this.tone(900, 0.06, { type: 'square', gain: 0.05, ui: true }); }
   // A short synthesized "oof"-like grunt (not the original asset).
+  // a short vocal "oof" when someone dies (sound-alike of the classic death sound)
   oof(pos) {
     if (!this.ctx) return;
-    const t = this.ctx.currentTime;
-    const o = this.ctx.createOscillator(); o.type = 'sawtooth';
-    o.frequency.setValueAtTime(220, t); o.frequency.exponentialRampToValueAtTime(110, t + 0.28);
-    const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 700; f.Q.value = 3;
-    const g = this.ctx.createGain(); g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.5 * this.att(pos), t + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
-    o.connect(f); f.connect(g); g.connect(pos ? this.fx : this.master); o.start(t); o.stop(t + 0.35);
+    this.voice(330, 175, 0.3, { gain: 0.5, formant: 560, q: 3.2, pos });
+    this.voice(660, 350, 0.26, { gain: 0.12, formant: 1100, q: 4, pos });
   }
   warning() {
     // ominous sting: low minor chord swell
@@ -229,4 +224,26 @@ export class Audio {
     this.noise('white', 0.12, { filter: 'highpass', freq: 3500, gain: 0.5, attack: 0.003, delay: 0.1, pos });
     this.tone(2100, 0.06, { type: 'sine', gain: 0.08, freqEnd: 1500, delay: 0.11, pos });
   }
+
+  // ---- character sounds (RbxCharacterSounds sound-alikes) ----
+  footstep(pos) {
+    this.noise('white', 0.055, { filter: 'bandpass', freq: 2300, q: 1.3, gain: 0.32, attack: 0.003, pos });
+    this.tone(150, 0.05, { type: 'sine', gain: 0.07, freqEnd: 90, attack: 0.003, pos });
+  }
+  jump(pos) {
+    this.noise('white', 0.17, { filter: 'bandpass', freq: 450, freqEnd: 1500, q: 1.1, gain: 0.28, attack: 0.01, pos });
+  }
+  land(pos, k = 1) {
+    this.noise('brown', 0.25, { filter: 'lowpass', freq: 380, gain: 0.9 * k, attack: 0.004, pos });
+    this.tone(85, 0.2, { type: 'sine', gain: 0.25 * k, freqEnd: 45, attack: 0.004, pos });
+  }
+  swimStroke(pos) {
+    this.noise('white', 0.28, { filter: 'bandpass', freq: 1100, freqEnd: 420, q: 0.8, gain: 0.3, attack: 0.03, pos });
+  }
+  splash(pos) {
+    this.noise('white', 0.55, { filter: 'lowpass', freq: 2600, freqEnd: 500, gain: 0.7, attack: 0.005, pos });
+    this.noise('brown', 0.4, { filter: 'lowpass', freq: 600, gain: 0.6, attack: 0.005, pos });
+  }
+  // wind rushing past while falling fast (local player only)
+  falling(on) { this.loop('falling', on, { type: 'white', filter: 'bandpass', freq: 650, q: 0.5, gain: 0.22 }); }
 }

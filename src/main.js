@@ -47,7 +47,7 @@ class Game {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.NoToneMapping;
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.3, 5000);
+    this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.5, 5000);
     addEventListener('resize', () => {
       this.renderer.setSize(innerWidth, innerHeight);
       this.camera.aspect = innerWidth / innerHeight;
@@ -433,6 +433,7 @@ class Game {
     p.move.copy(driving ? new THREE.Vector3() : m);
     p.jump = input.jumpHeld();
     p.faceYaw = (input.shiftLock || cam.firstPerson) && !p.seat ? cam.yaw : null;
+    p.diveDir = f > 0 ? cam.pitch : 0;    // looking down while swimming forward dives
 
     for (let i = 0; i < 10; i++) if (input.wasPressed(String((i + 1) % 10))) this.equipSlot(i);
     if (input.wasPressed('e')) this.interactNearest(true);
@@ -492,14 +493,14 @@ class Game {
     const consider = (p, v) => {
       if (p.tags.has('nodamage')) return;
       const s2 = v.x * v.x + v.y * v.y + v.z * v.z;
-      if (s2 > 26 * 26) fast.push([p, Math.sqrt(s2)]);
+      if (s2 > 8 * 8) fast.push([p, Math.sqrt(s2), v]);
     };
     for (const p of this.world.dynamic) if (!this.world.replicas.has(p)) consider(p, p.body.linvel());
     for (const p of this.world.replicas) if (!p.anchored && p.netVel) consider(p, p.netVel);
     if (!fast.length) return;
     for (const c of this.chars) {
-      if (!c.alive || c.remote || (c.debrisCd || 0) > this.time) continue;
-      for (const [p, sp] of fast) {
+      if (!c.alive || c.remote) continue;
+      for (const [p, sp, v] of fast) {
         const t = p.body.translation();
         const dx = t.x - c.pos.x, dz = t.z - c.pos.z;
         const reach = Math.max(p.size.x, p.size.y, p.size.z) * 0.42 + 1.3;
@@ -508,6 +509,14 @@ class Game {
         const dy = t.y - cy;
         if (dx * dx + dy * dy + dz * dz > reach * reach) continue;
         const vol = p.size.x * p.size.y * p.size.z;
+        // a moving brick shoves you (a big one more than a small one); a hard hit knocks you over
+        if ((c.shoveCd || 0) <= this.time && (v.x * -dx + v.z * -dz) > 0) {
+          const share = clamp(vol / (vol + 8), 0.1, 0.85);
+          c.addVelocity({ x: v.x * share * 0.6, y: Math.max(0, v.y) * share * 0.3, z: v.z * share * 0.6 });
+          if (sp * share > 26) c.knockDown(1.4);
+          c.shoveCd = this.time + 0.15;
+        }
+        if (sp < 26 || (c.debrisCd || 0) > this.time) continue;
         const dmg = clamp((sp - 26) * Math.sqrt(Math.max(1, vol)) * 0.3, 0, 100);
         if (dmg < 2) continue;
         c.debrisCd = this.time + 0.3;
@@ -581,9 +590,12 @@ class Game {
     }
     const sc = this.spectating || p;
     const rp = sc.renderPos(alpha);
-    const subj = sc.alive ? new THREE.Vector3(rp.x, rp.y + 4.5, rp.z) : null;
+    // after dying the camera follows the falling torso until you respawn
+    const torso = !sc.alive && sc.corpse?.[0]?.alive ? sc.corpse[0].body.translation() : null;
+    const subj = sc.alive ? new THREE.Vector3(rp.x, rp.y + 4.5, rp.z) : torso ? new THREE.Vector3(torso.x, torso.y + 1.5, torso.z) : null;
     this.camController.update(dt, this.input, subj);
-    p.avatar.setVisible(p.alive && !this.camController.firstPerson);
+    p.avatar.setVisible(p.alive);
+    p.avatar.setLocalHidden(p.alive && this.camController.firstPerson);
     this.effects.update(dt);
     this.ui.update(dt);
     this.input.endFrame();

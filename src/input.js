@@ -57,14 +57,18 @@ export class Input {
     canvas.addEventListener('mousedown', (e) => {
       this.lastActivity = performance.now();
       this.downAt = { x: e.clientX, y: e.clientY, t: performance.now(), button: e.button };
-      this.dragging = true;
+      // only the right button turns the camera (the left one is for tools and clicking)
+      if (e.button === 2) this.dragging = true;
+      // first person keeps the mouse locked in the middle of the screen
+      if (this.wantLock && document.pointerLockElement !== canvas) canvas.requestPointerLock?.();
     });
     addEventListener('mouseup', (e) => {
       if (this.downAt && e.button === 0) {
         const moved = Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y);
         if (moved < 6) { this.clicked = true; this.clickX = e.clientX; this.clickY = e.clientY; }
       }
-      this.dragging = false; this.downAt = null;
+      if (e.button === 2) this.dragging = false;
+      this.downAt = null;
     });
     addEventListener('mousemove', (e) => {
       this.mouseX = e.clientX; this.mouseY = e.clientY;
@@ -83,6 +87,12 @@ export class Input {
     canvas.addEventListener('touchcancel', (e) => this.onTouch(e, 'end'), { passive: false });
   }
 
+  // leaving first person lets go of the mouse again (unless shift lock holds it)
+  setWantLock(v) {
+    if (this.wantLock && !v && !this.shiftLock && document.pointerLockElement === this.canvas) document.exitPointerLock();
+    this.wantLock = v;
+  }
+
   toggleShiftLock() {
     if (this.isTouch || !this.shiftLockEnabled || this.blocked?.()) return;
     this.shiftLock = !this.shiftLock;
@@ -98,7 +108,8 @@ export class Input {
     for (const tc of e.changedTouches) {
       const id = tc.identifier;
       if (phase === 'start') {
-        if (tc.clientX < innerWidth * 0.4 && tc.clientY > innerHeight * 0.4 && !t.joy) {
+        // the thumbstick lives in the left 40% x bottom two thirds of the screen
+        if (tc.clientX < innerWidth * 0.4 && tc.clientY > innerHeight / 3 && !t.joy) {
           t.joy = { id, x: tc.clientX, y: tc.clientY };
           this.showJoy?.(tc.clientX, tc.clientY, 0, 0);
         } else if (!t.look) {
@@ -108,10 +119,12 @@ export class Input {
         }
       } else if (phase === 'move') {
         if (t.joy && t.joy.id === id) {
+          // Roblox DynamicThumbstick: 2 px dead zone, full speed 20 px out (40 on big screens)
           let dx = tc.clientX - t.joy.x, dy = tc.clientY - t.joy.y;
-          const len = Math.hypot(dx, dy), max = 50;
+          const len = Math.hypot(dx, dy), max = Math.min(innerWidth, innerHeight) > 500 ? 40 : 20;
           if (len > max) { dx = dx / len * max; dy = dy / len * max; }
-          t.joyX = dx / max; t.joyY = dy / max;
+          const k = len < 2 ? 0 : 1;
+          t.joyX = dx / max * k; t.joyY = dy / max * k;
           this.showJoy?.(t.joy.x, t.joy.y, dx, dy);
         } else if (t.pinch && (t.pinch.id === id || (t.look && t.look.id === id))) {
           if (t.pinch.id === id) { t.pinch.x = tc.clientX; t.pinch.y = tc.clientY; } else { t.look.x = tc.clientX; t.look.y = tc.clientY; }

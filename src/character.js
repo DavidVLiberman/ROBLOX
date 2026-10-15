@@ -6,7 +6,7 @@ import { RAPIER, IG_CHAR } from './world.js';
 import { Avatar, NOOB_COLORS } from './avatar.js';
 import { GRAVITY, WALK_SPEED, JUMP_POWER, MAX_HEALTH, clamp } from './util.js';
 
-export const STATES = ['idle', 'walk', 'jump', 'fall', 'climb', 'swim', 'sit'];
+export const STATES = ['idle', 'walk', 'jump', 'fall', 'climb', 'swim', 'sit', 'down'];
 export const TOOL_IDS = [null, 'balloon', 'apple', 'hammer', 'compass'];
 export const EMOTES = [null, 'dance', 'dance2', 'dance3', 'wave', 'point', 'cheer', 'laugh'];
 
@@ -72,8 +72,9 @@ export class Character {
       sharedKCC.enableAutostep(1.6, 0.3, true);
       sharedKCC.enableSnapToGround(0.9);
       sharedKCC.setSlideEnabled(true);
-      sharedKCC.setMaxSlopeClimbAngle(55 * Math.PI / 180);
-      sharedKCC.setMinSlopeSlideAngle(60 * Math.PI / 180);
+      // Humanoid.MaxSlopeAngle is 89: you can walk up almost any wedge
+      sharedKCC.setMaxSlopeClimbAngle(89 * Math.PI / 180);
+      sharedKCC.setMinSlopeSlideAngle(89.5 * Math.PI / 180);
       sharedKCC.setApplyImpulsesToDynamicBodies(true);
       sharedKCC.setCharacterMass(10);
       sharedKCC.setUp({ x: 0, y: 1, z: 0 });
@@ -131,6 +132,13 @@ export class Character {
     this.avatar.hold(this.equipped);
   }
 
+  // a hard hit knocks you over for a moment (Humanoid FallingDown), then you get up
+  knockDown(t = 1.6) {
+    if (this.remote || this.seat) return;
+    this.downUntil = Math.max(this.downUntil || 0, this.game.time + t);
+    this.climbing = null;
+  }
+
   addVelocity(v) {
     if (this.remote) return;
     this.vel.y += v.y;
@@ -179,15 +187,19 @@ export class Character {
     this.climbing = null;
     this.infected = false;
     this.emote = null;
-    // R6 death: the body falls apart into its six pieces.
-    const w = this.game.world;
+    // R6 death (BreakJointsOnDeath): the joints let go and the six pieces just
+    // collapse, keeping the body's own momentum. They go when you respawn.
+    const w = this.game.world, v = this.lastVel || { x: 0, y: 0, z: 0 };
+    this.corpse = [];
     for (const l of this.avatar.limbs()) {
       const p = w.addPart({ pos: [l.pos.x, l.pos.y, l.pos.z], size: l.size, color: l.color, rot: l.rot, anchored: false, corpse: true, tags: ['corpse', 'nodamage'] });
-      p.lifetime = 6;
-      w.push(p, { x: (Math.random() - .5) * 14 + this.ext.x * 0.5, y: 6 + Math.random() * 6, z: (Math.random() - .5) * 14 + this.ext.z * 0.5 }, false);
+      p.lifetime = 5;
+      w.push(p, { x: v.x + (Math.random() - .5) * 1.5, y: v.y + Math.random() * 0.8, z: v.z + (Math.random() - .5) * 1.5 }, false);
+      this.corpse.push(p);
     }
     this.avatar.setVisible(false);
     this.teleportHidden();
+    if (this.fallingLoud) { this.fallingLoud = false; this.game.audio?.falling(false); }
     this.game.audio?.oof(this.isPlayer ? null : this.pos);
     this.game.onDeath?.(this, cause, wasInRound);
     this.respawnAt = this.remote ? 0 : this.game.time + 5;
@@ -213,7 +225,8 @@ export class Character {
     s.occupant = null;
     this.seat = null;
     this.unsitTime = this.game.time;
-    this.vel.y = 30;
+    (this.seatCd ||= new Map()).set(s, this.game.time + 3);   // Seat: 3 s before the same seat takes you again
+    this.vel.y = JUMP_POWER;
     this.game.onUnsit?.(this, s);
   }
 
@@ -226,8 +239,14 @@ export class Character {
     }
     const game = this.game;
     this.prevPos.copy(this.pos);
+    // the default Health script: +1% of MaxHealth every second
+    if (this.health < this.maxHealth) {
+      this.regenT = (this.regenT || 0) + dt;
+      if (this.regenT >= 1) { this.regenT -= 1; this.heal(this.maxHealth * 0.01); }
+    } else this.regenT = 0;
     if (this.seat) {
-      if (!this.seat.alive || !this.seat.anchored) { this.unsit(); }
+      // a seat that breaks loose keeps you in it (you ride the falling chair)
+      if (!this.seat.alive) { this.unsit(); }
       else {
         const t = this.seat.body.translation(), r = this.seat.body.rotation();
         const q = new THREE.Quaternion(r.x, r.y, r.z, r.w);
@@ -245,10 +264,13 @@ export class Character {
     const centerY = this.pos.y + HALF;
     const swimming = centerY < water;
     this.swimming = swimming;
+    // knocked over by a hard hit (FallingDown): no walking or jumping until you get up
+    const down = (this.downUntil || 0) > game.time;
+    if (down) { this.move.set(0, 0, 0); this.jump = false; }
     const mlen = Math.hypot(this.move.x, this.move.z);
     if (mlen > 0.1 || this.jump || (this.emoteUntil && game.time > this.emoteUntil)) { this.emote = null; this.emoteUntil = 0; }
     const g = GRAVITY * this.gravityScale;
-    const speed = WALK_SPEED * this.speedMul * (swimming ? 0.8 : 1);
+    const speed = WALK_SPEED * this.speedMul * (swimming ? 0.875 : 1);   // Humanoids swim at 87.5% of WalkSpeed
 
     const climb = this.updateClimb(dt, mlen);
     let dx, dz;
@@ -260,7 +282,9 @@ export class Character {
       dz = (climb.side.z * climb.lateral * speed * 0.5 + climb.n.z * 3 + this.ext.z * 0.2) * dt;
     } else {
       if (swimming) {
-        const target = this.jump ? 16 : (centerY < water - 1.2 ? 9 : -1);
+        // swimming follows the camera: look down and walk forward to dive
+        const dive = this.diveDir < -0.6 && mlen > 0.3 ? Math.sin(this.diveDir) * speed : 0;
+        const target = this.jump ? 16 : dive || (centerY < water - 1.2 ? 9 : -1);
         this.vel.y += (target - this.vel.y) * Math.min(1, dt * 5);
         if (this.jump && centerY > water - 1.5) this.vel.y = Math.max(this.vel.y, 26);
       } else {
@@ -273,6 +297,7 @@ export class Character {
         this.grounded = false;
         this.lastGrounded = -1;
         this.jumpedAt = game.time;
+        this.sfx('jump');
       }
       dx = (this.move.x * speed + this.ext.x) * dt;
       dz = (this.move.z * speed + this.ext.z) * dt;
@@ -285,6 +310,14 @@ export class Character {
         this.pos.y += h + 0.03;
         this.collider.setTranslation({ x: this.pos.x, y: this.pos.y + HALF, z: this.pos.z });
         this.vel.y = Math.max(this.vel.y, 0);
+      } else if (this.isPlayer && game.input?.isTouch && this.grounded && mlen > 0.3) {
+        // AutoJumpEnabled (touch): walking into a ledge you can jump onto jumps
+        const f = { x: this.move.x / mlen, y: 0, z: this.move.z / mlen }, w = game.world;
+        const low = w.raycast({ x: this.pos.x, y: this.pos.y + 0.6, z: this.pos.z }, f, 1.6);
+        if (low && Math.abs(low.normal.y) < 0.5 && !low.object?.tags?.has('truss') && !w.raycast({ x: this.pos.x, y: this.pos.y + 5.6, z: this.pos.z }, f, 2.2)
+          && game.time - (this.jumpedAt || 0) > 0.5) {
+          this.vel.y = JUMP_POWER; this.grounded = false; this.lastGrounded = -1; this.jumpedAt = game.time;
+        }
       }
     }
     const dy = this.vel.y * dt;
@@ -299,13 +332,20 @@ export class Character {
     }
     if (this.grounded) this.lastGrounded = game.time;
     if (this.grounded && this.vel.y < 0) {
-      // landing impact: Roblox has no fall damage, keep it that way
+      // landing impact: Roblox has no fall damage, keep it that way; a hard
+      // landing (falling faster than 75 studs/s) thuds
+      if (!wasGrounded && this.vel.y < -75) this.sfx('land', Math.min(1, (-this.vel.y - 50) / 50));
       this.vel.y = -0.5;
     }
     if (climb && this.grounded && this.climbV < 0) this.climbing = null;   // climbed back down
     if (this.vel.y > 0 && dy > 0 && mv.y < dy * 0.25 && !climb) this.vel.y = 0; // bonked head
     if (!this.grounded && wasGrounded && this.vel.y <= 0) this.vel.y = Math.min(this.vel.y, 0);
     // ride moving platforms (vehicles, rocket, rising volcano)
+    // standing on a loose brick that is moving carries you along with it
+    if (this.groundPart && this.groundPart.alive && !this.groundPart.anchored && this.groundPart.body) {
+      const gv = this.groundPart.netVel || this.groundPart.body.linvel();
+      mv.x += gv.x * dt; mv.z += gv.z * dt;
+    }
     if (this.groundPart && this.groundPart.alive && this.groundPart.anchored && this.groundPart.lastDelta) {
       mv.x += this.groundPart.lastDelta.x; mv.y += this.groundPart.lastDelta.y; mv.z += this.groundPart.lastDelta.z;
     }
@@ -359,15 +399,16 @@ export class Character {
       if (o.local && mlen > 0.2 && (nx * this.move.x + nz * this.move.z) > 0) { o.ext.x += this.move.x * 26 * dt; o.ext.z += this.move.z * 26 * dt; }
     }
 
-    // seats
-    if (!this.seat && game.time - this.unsitTime > 1.2 && this.vel.y <= 0 && !climb) {
+    // seats: touching one sits you in it (players); bots sit when they step onto one.
+    // Each seat waits 3 s before it takes back the person who just got off it.
+    if (!this.seat && game.time - this.unsitTime > 0.35 && this.vel.y <= 1 && !climb) {
       for (const s of game.seats) {
-        if (!s.alive || !s.anchored || s.occupant) continue;
-        const t = s.body.translation();
-        const top = t.y + s.size.y / 2;
-        if (Math.abs(this.pos.x - t.x) < s.size.x / 2 + 0.4 && Math.abs(this.pos.z - t.z) < s.size.z / 2 + 0.4 && Math.abs(this.pos.y - top) < 1.0) {
-          this.sit(s); break;
-        }
+        if (!s.alive || s.occupant || (this.seatCd?.get(s) || 0) > game.time) continue;
+        const b = game.world.aabb(s), top = b.maxY;
+        const touch = this.isPlayer
+          ? this.pos.x > b.minX - 0.9 && this.pos.x < b.maxX + 0.9 && this.pos.z > b.minZ - 0.9 && this.pos.z < b.maxZ + 0.9 && top > this.pos.y - 1 && top < this.pos.y + 3
+          : this.pos.x > b.minX - 0.4 && this.pos.x < b.maxX + 0.4 && this.pos.z > b.minZ - 0.4 && this.pos.z < b.maxZ + 0.4 && Math.abs(this.pos.y - top) < 1.0;
+        if (touch) { this.sit(s); break; }
       }
     }
 
@@ -375,12 +416,38 @@ export class Character {
 
     // animation state
     const hs = Math.hypot(mv.x, mv.z) / dt;
+    this.lastVel = { x: mv.x / dt, y: mv.y / dt, z: mv.z / dt };
     this.hSpeed = climb ? Math.abs(this.climbV) + Math.abs(climb.lateral) * 4 : hs;
-    if (climb) this.state = 'climb';
+    if (down) this.state = 'down';
+    else if (climb) this.state = 'climb';
     else if (swimming) this.state = 'swim';
     else if (!this.grounded) this.state = this.vel.y > 0 ? 'jump' : 'fall';
     else if (hs > 1.5 && mlen > 0.1) this.state = 'walk';
     else this.state = 'idle';
+
+    // footsteps (walking and climbing), swim strokes, a splash going in, wind while falling
+    if (this.state === 'walk' || (this.state === 'climb' && Math.abs(this.climbV) > 1)) {
+      this.stepDist = (this.stepDist || 0) + this.hSpeed * dt;
+      if (this.stepDist > (this.state === 'walk' ? 2.7 : 2.2)) { this.stepDist = 0; this.sfx('footstep'); }
+    } else if (this.state === 'swim' && hs > 2) {
+      this.stepDist = (this.stepDist || 0) + hs * dt;
+      if (this.stepDist > 5) { this.stepDist = 0; this.sfx('swimStroke'); }
+    }
+    if (swimming && !this.wasSwimming && this.lastVel.y < -8) this.sfx('splash');
+    this.wasSwimming = swimming;
+    if (this.isPlayer) {
+      const fast = !this.grounded && !climb && !swimming && this.vel.y < -75;
+      if (fast !== !!this.fallingLoud) { this.fallingLoud = fast; game.audio?.falling(fast); }
+    }
+  }
+
+  // a character sound: your own at full volume, everyone else's by distance (and not
+  // at all from far away)
+  sfx(kind, k) {
+    const a = this.game.audio;
+    if (!a?.ctx) return;
+    if (!this.isPlayer && this.game.camera.position.distanceTo(this.pos) > 70) return;
+    a[kind]?.(this.isPlayer ? null : this.pos, k);
   }
 
   // Pop out of a brick we're stuck inside: the nearest free spot around us (the way

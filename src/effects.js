@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { clamp, lerp, rand } from './util.js';
 
 export const SKY_PRESETS = {
-  clear:   { top: 0x3f8fe0, bottom: 0xbfe3ff, fog: 0xbfe3ff, fogNear: 300, fogFar: 1600, sun: 1.9, amb: 1.35, cloud: 0xffffff, cloudOpacity: 0.95 },
+  clear:   { top: 0x3f8fe0, bottom: 0xbfe3ff, fog: 0xbfe3ff, fogNear: 1400, fogFar: 3600, sun: 1.9, amb: 1.35, cloud: 0xffffff, cloudOpacity: 0.95 },
   dark:    { top: 0x2b3038, bottom: 0x5a616b, fog: 0x4c535c, fogNear: 120, fogFar: 700, sun: 0.7, amb: 0.65, cloud: 0x3a3f46, cloudOpacity: 1 },
   acid:    { top: 0x262d22, bottom: 0x4e5a45, fog: 0x495440, fogNear: 110, fogFar: 650, sun: 0.65, amb: 0.65, cloud: 0x343b30, cloudOpacity: 1 },
   white:   { top: 0xdfe6ec, bottom: 0xf5f8fa, fog: 0xeef2f5, fogNear: 10, fogFar: 170, sun: 1.0, amb: 1.1, cloud: 0xffffff, cloudOpacity: 1 },
@@ -12,9 +12,31 @@ export const SKY_PRESETS = {
   volcano: { top: 0x3d2b25, bottom: 0x8a5a3c, fog: 0x7a5a48, fogNear: 150, fogFar: 900, sun: 1.1, amb: 0.8, cloud: 0x4a3a34, cloudOpacity: 1 },
 };
 
+// Roblox's default sky: a blue gradient with soft painted cumulus clouds and a big
+// sun with a glow (all procedural: no images)
 const skyVert = `varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`;
-const skyFrag = `uniform vec3 top; uniform vec3 bottom; uniform vec3 camPos; varying vec3 vW;
-void main(){ float h = normalize(vW - camPos).y; float t = clamp(h * 1.6 + 0.15, 0.0, 1.0); gl_FragColor = vec4(mix(bottom, top, t), 1.0); }`;
+const skyFrag = `uniform vec3 top; uniform vec3 bottom; uniform vec3 camPos; uniform vec3 sunDir; uniform vec3 cloudCol;
+uniform float cloudAmt; uniform float sunAmt; uniform float cover; uniform float time; varying vec3 vW;
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y); }
+float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }
+void main(){
+  vec3 d = normalize(vW - camPos);
+  float h = d.y;
+  vec3 col = mix(bottom, top, clamp(h * 1.6 + 0.15, 0.0, 1.0));
+  float s = max(dot(d, sunDir), 0.0);
+  col += vec3(1.0, 0.96, 0.85) * (smoothstep(0.9963, 0.998, s) * 1.6 + pow(s, 60.0) * 0.35 + pow(s, 8.0) * 0.08) * sunAmt;
+  if (h > 0.0) {
+    vec2 uv = d.xz / (h + 0.12) * 1.3 + vec2(time * 0.004, time * 0.0016);
+    float n = fbm(uv);
+    float c = smoothstep(0.5 - cover, 0.7 - cover, n) * smoothstep(0.0, 0.14, h);
+    float lit = smoothstep(0.45, 0.85, fbm(uv * 1.8 + 3.7));
+    vec3 cc = mix(cloudCol * 0.8, cloudCol, lit) + vec3(1.0, 0.97, 0.9) * pow(s, 20.0) * 0.25 * sunAmt;
+    col = mix(col, cc, c * cloudAmt);
+  }
+  gl_FragColor = vec4(col, 1.0);
+}`;
 
 function radialTexture(stops) {
   const c = document.createElement('canvas'); c.width = c.height = 64;
@@ -105,7 +127,10 @@ export class Effects {
     this.game = game;
     const scene = game.scene;
     this.scene = scene;
-    this.skyUniforms = { top: { value: new THREE.Color() }, bottom: { value: new THREE.Color() }, camPos: { value: new THREE.Vector3() } };
+    this.skyUniforms = {
+      top: { value: new THREE.Color() }, bottom: { value: new THREE.Color() }, camPos: { value: new THREE.Vector3() },
+      sunDir: { value: new THREE.Vector3() }, cloudCol: { value: new THREE.Color() }, cloudAmt: { value: 1 }, sunAmt: { value: 1 }, cover: { value: 0 }, time: { value: 0 },
+    };
     this.sky = new THREE.Mesh(new THREE.SphereGeometry(3000, 24, 12), new THREE.ShaderMaterial({
       uniforms: this.skyUniforms, vertexShader: skyVert, fragmentShader: skyFrag, side: THREE.BackSide, depthWrite: false, fog: false,
     }));
@@ -124,26 +149,8 @@ export class Effects {
     this.sun.shadow.normalBias = 0.4;
     scene.add(this.sun, this.sun.target);
     this.sunDir = new THREE.Vector3(-0.45, 1, 0.35).normalize();
+    this.skyUniforms.sunDir.value.copy(this.sunDir);
 
-    // clouds: flattened soft blobs
-    this.clouds = new THREE.Group();
-    const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x8a8a8a, transparent: true, opacity: 0.95, fog: false });
-    this.cloudMat = cloudMat;
-    const blob = new THREE.SphereGeometry(1, 10, 8);
-    for (let i = 0; i < 26; i++) {
-      const c = new THREE.Group();
-      const n = 3 + Math.floor(rand() * 4);
-      for (let k = 0; k < n; k++) {
-        const m = new THREE.Mesh(blob, cloudMat);
-        m.scale.set(30 + rand() * 30, 10 + rand() * 6, 22 + rand() * 18);
-        m.position.set(k * 30 - n * 15, rand() * 6, (rand() - .5) * 20);
-        c.add(m);
-      }
-      const a = rand() * Math.PI * 2, r = 200 + rand() * 900;
-      c.position.set(Math.cos(a) * r, 260 + rand() * 80, Math.sin(a) * r);
-      this.clouds.add(c);
-    }
-    scene.add(this.clouds);
 
     this.cur = { ...SKY_PRESETS.clear };
     this.target = SKY_PRESETS.clear;
@@ -186,7 +193,11 @@ export class Effects {
     this.game.scene.fog.far = c.fogFar;
     this.sun.intensity = c.sun;
     this.hemi.intensity = c.amb;
-    this.cloudMat.color.set(c.cloud);
+    this.skyUniforms.cloudCol.value.set(c.cloud);
+    this.skyUniforms.cloudAmt.value = c.cloudOpacity ?? 1;
+    // the sun shows through on clear days and fades out under storm clouds
+    this.skyUniforms.sunAmt.value = Math.max(0, Math.min(1, (c.sun - 0.9) / 1.0));
+    this.skyUniforms.cover.value = Math.max(0, Math.min(0.42, (1.35 - c.sun) / 1.2));   // storms are overcast
   }
 
   // ---------- weather particles ----------
@@ -385,7 +396,7 @@ export class Effects {
     const cam = this.game.camera.position;
     this.sky.position.copy(cam);
     this.skyUniforms.camPos.value.copy(cam);
-    this.clouds.position.x = (this.game.time * 2) % 400 - 200;
+    this.skyUniforms.time.value = this.game.time % 10000;
     // shadow camera follows the subject
     const focus = this.game.camController.target;
     this.sun.position.copy(focus).addScaledVector(this.sunDir, 350);

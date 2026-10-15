@@ -131,15 +131,20 @@ export class Avatar {
     this.t = (this.t || 0) + dt;
     let amp = 0.1, freq = 1, fudge = 0, maxVel = 0.15, la, ra, ll, rl, tilt = 0;
     let laz = 0, raz = 0, bob = 0, twist = 0, lean = 0;
-    if (state === 'walk') { amp = 1; freq = 9; }
+    // the walk cycle runs at speed/14.5 like the Animate script (normal pace at WalkSpeed 16)
+    if (state === 'walk') { amp = 1; freq = 9 * Math.max(0.3, Math.min(1.4, speed / 16)); }
     else if (state === 'climb') { amp = 1; fudge = Math.PI; maxVel = 0.5; }
-    else if (state === 'swim') { amp = 1; freq = 6; fudge = Math.PI * 0.8; maxVel = 0.5; tilt = 1.2; }
-    if (state === 'jump' || state === 'fall') {
+    else if (state === 'swim') { amp = 1; freq = 6; fudge = Math.PI * 0.8; maxVel = 0.5; tilt = speed > 2 ? 1.2 : 0.35; }
+    this.phase = (this.phase || 0) + dt * freq;
+    if (state === 'down') { tilt = -1.45; maxVel = 0.5; la = ra = 0.4; ll = rl = 0.2; }
+    if (state === 'down') {
+      // knocked over: lying on the back for a moment
+    } else if (state === 'jump' || state === 'fall') {
       maxVel = 0.5; la = Math.PI; ra = Math.PI; ll = 0; rl = 0;
     } else if (state === 'sit') {
       maxVel = 0.15; la = ra = ll = rl = Math.PI / 2;
     } else if (state === 'climb') {
-      this.climbPhase = (this.climbPhase || 0) + dt * 9 * Math.min(1.2, speed / 11.2);
+      this.climbPhase = (this.climbPhase || 0) + dt * 9 * Math.min(1.2, speed / 12);
       const a = Math.sin(this.climbPhase);
       la = a + fudge; ra = -a + fudge; rl = -a; ll = a;
     } else if (state === 'idle' && emote) {
@@ -169,12 +174,12 @@ export class Avatar {
         lean = 0.15 + Math.sin(t * 16) * 0.1; la = ra = 0.35; laz = -0.2; raz = 0.2;
       }
     } else {
-      const a = amp * Math.sin(this.t * freq);
+      const a = amp * Math.sin(this.phase);
       ra = a + fudge; la = -a + fudge; rl = -a; ll = a;
       if (state === 'swim') { la = a + fudge; ra = -a + fudge; }
     }
-    // tool held: right arm points forward ("toolnone"), balloon is held up high
-    if (this.heldKind && state !== 'sit' && state !== 'jump' && state !== 'fall' && state !== 'climb' && !emote) ra = Math.PI / 2;
+    // tool held: right arm points forward ("toolnone" outranks jump, fall and climb), balloon is held up high
+    if (this.heldKind && state !== 'sit' && !emote) ra = Math.PI / 2;
     if (this.heldKind === 'balloon' && state !== 'climb') ra = Math.PI;
     if (this.swing > 0) { ra = Math.PI / 2 + Math.sin(this.swing * Math.PI) * 1.2; this.swing -= dt * 3; maxVel = 1; }
     // Motor6D MaxVelocity is per 1/30 s step in the legacy engine
@@ -187,11 +192,23 @@ export class Avatar {
     L.z += (laz - L.z) * k; R.z += (raz - R.z) * k;
     this.body.rotation.x += (tilt + lean - this.body.rotation.x) * Math.min(1, dt * 10);
     this.body.rotation.y += (twist - this.body.rotation.y) * k;
-    const by = state === 'sit' ? -1.6 : (tilt ? 1.5 : 0) + bob;
+    const by = state === 'sit' ? -1.6 : state === 'down' ? 0.6 : (tilt ? 1.5 : 0) + bob;
     this.body.position.y += (by - this.body.position.y) * (bob ? k : 1);
   }
 
   setVisible(v) { this.body.visible = v; if (this.tag) this.tag.visible = v; }
+
+  // first person: your own body disappears (LocalTransparencyModifier) but a held tool stays
+  setLocalHidden(hidden) {
+    const key = hidden ? this.heldKind || '-' : null;
+    if (this._localHidden === key) return;
+    this._localHidden = key;
+    this.body.traverse((o) => {
+      if (!o.isMesh && !o.isSprite) return;
+      let q = o; while (q && q !== this.held) q = q.parent;
+      o.visible = !hidden || (this.held && q === this.held);
+    });
+  }
 
   // Bounding info for spawning death debris (R6 "falls apart" on death).
   limbs() {
