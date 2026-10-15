@@ -4,76 +4,76 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Natural Disaster Survival</title>
-<meta name="build" content="2026.10.15.0147">
+<meta name="build" content="2026.10.15.0149">
 <meta name="description" content="A browser remake of the classic round-based disaster survival game. Survive floods, tsunamis, tornadoes and more as a classic noob.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Roboto:wght@400;500;700;900&family=Source+Sans+3:wght@400;600;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2026.10.15.0147">
+<link rel="stylesheet" href="style.css?v=2026.10.15.0149">
 <script type="importmap">
 { "imports": {
-  "three": "./vendor/three.module.js?v=2026.10.15.0147",
-  "rapier": "./vendor/rapier.es.js?v=2026.10.15.0147",
-  "trystero": "./vendor/trystero.js?v=2026.10.15.0147",
-  "./src/audio.js": "./src/audio.js?v=2026.10.15.0147",
-  "./src/avatar.js": "./src/avatar.js?v=2026.10.15.0147",
-  "./src/bots.js": "./src/bots.js?v=2026.10.15.0147",
-  "./src/builder.js": "./src/builder.js?v=2026.10.15.0147",
-  "./src/camera.js": "./src/camera.js?v=2026.10.15.0147",
-  "./src/character.js": "./src/character.js?v=2026.10.15.0147",
-  "./src/chatfilter.js": "./src/chatfilter.js?v=2026.10.15.0147",
-  "./src/data.js": "./src/data.js?v=2026.10.15.0147",
-  "./src/disasters/acid.js": "./src/disasters/acid.js?v=2026.10.15.0147",
-  "./src/disasters/avalanche.js": "./src/disasters/avalanche.js?v=2026.10.15.0147",
-  "./src/disasters/blizzard.js": "./src/disasters/blizzard.js?v=2026.10.15.0147",
-  "./src/disasters/common.js": "./src/disasters/common.js?v=2026.10.15.0147",
-  "./src/disasters/earthquake.js": "./src/disasters/earthquake.js?v=2026.10.15.0147",
-  "./src/disasters/fire.js": "./src/disasters/fire.js?v=2026.10.15.0147",
-  "./src/disasters/flood.js": "./src/disasters/flood.js?v=2026.10.15.0147",
-  "./src/disasters/index.js": "./src/disasters/index.js?v=2026.10.15.0147",
-  "./src/disasters/meteor.js": "./src/disasters/meteor.js?v=2026.10.15.0147",
-  "./src/disasters/sandstorm.js": "./src/disasters/sandstorm.js?v=2026.10.15.0147",
-  "./src/disasters/thunder.js": "./src/disasters/thunder.js?v=2026.10.15.0147",
-  "./src/disasters/tornado.js": "./src/disasters/tornado.js?v=2026.10.15.0147",
-  "./src/disasters/tsunami.js": "./src/disasters/tsunami.js?v=2026.10.15.0147",
-  "./src/disasters/virus.js": "./src/disasters/virus.js?v=2026.10.15.0147",
-  "./src/disasters/volcano.js": "./src/disasters/volcano.js?v=2026.10.15.0147",
-  "./src/effects.js": "./src/effects.js?v=2026.10.15.0147",
-  "./src/input.js": "./src/input.js?v=2026.10.15.0147",
-  "./src/island.js": "./src/island.js?v=2026.10.15.0147",
-  "./src/main.js": "./src/main.js?v=2026.10.15.0147",
-  "./src/maps.js": "./src/maps.js?v=2026.10.15.0147",
-  "./src/maps/arch-park.js": "./src/maps/arch-park.js?v=2026.10.15.0147",
-  "./src/maps/coastal-quickstop.js": "./src/maps/coastal-quickstop.js?v=2026.10.15.0147",
-  "./src/maps/devastation-station.js": "./src/maps/devastation-station.js?v=2026.10.15.0147",
-  "./src/maps/factory-frenzy.js": "./src/maps/factory-frenzy.js?v=2026.10.15.0147",
-  "./src/maps/fort-indestructible.js": "./src/maps/fort-indestructible.js?v=2026.10.15.0147",
-  "./src/maps/furious-station.js": "./src/maps/furious-station.js?v=2026.10.15.0147",
-  "./src/maps/glass-office.js": "./src/maps/glass-office.js?v=2026.10.15.0147",
-  "./src/maps/happy-home.js": "./src/maps/happy-home.js?v=2026.10.15.0147",
-  "./src/maps/heights-school.js": "./src/maps/heights-school.js?v=2026.10.15.0147",
-  "./src/maps/helpers.js": "./src/maps/helpers.js?v=2026.10.15.0147",
-  "./src/maps/launch-land.js": "./src/maps/launch-land.js?v=2026.10.15.0147",
-  "./src/maps/lucky-mart.js": "./src/maps/lucky-mart.js?v=2026.10.15.0147",
-  "./src/maps/manic-mansion.js": "./src/maps/manic-mansion.js?v=2026.10.15.0147",
-  "./src/maps/modest-headquarters.js": "./src/maps/modest-headquarters.js?v=2026.10.15.0147",
-  "./src/maps/party-palace.js": "./src/maps/party-palace.js?v=2026.10.15.0147",
-  "./src/maps/prison-panic.js": "./src/maps/prison-panic.js?v=2026.10.15.0147",
-  "./src/maps/rainbow-ride.js": "./src/maps/rainbow-ride.js?v=2026.10.15.0147",
-  "./src/maps/rakish-refinery.js": "./src/maps/rakish-refinery.js?v=2026.10.15.0147",
-  "./src/maps/raving-raceway.js": "./src/maps/raving-raceway.js?v=2026.10.15.0147",
-  "./src/maps/safety-second.js": "./src/maps/safety-second.js?v=2026.10.15.0147",
-  "./src/maps/sky-tower.js": "./src/maps/sky-tower.js?v=2026.10.15.0147",
-  "./src/maps/sunny-ranch.js": "./src/maps/sunny-ranch.js?v=2026.10.15.0147",
-  "./src/maps/surf-central.js": "./src/maps/surf-central.js?v=2026.10.15.0147",
-  "./src/maps/trailer-park.js": "./src/maps/trailer-park.js?v=2026.10.15.0147",
-  "./src/materials.js": "./src/materials.js?v=2026.10.15.0147",
-  "./src/nav.js": "./src/nav.js?v=2026.10.15.0147",
-  "./src/net.js": "./src/net.js?v=2026.10.15.0147",
-  "./src/round.js": "./src/round.js?v=2026.10.15.0147",
-  "./src/ui.js": "./src/ui.js?v=2026.10.15.0147",
-  "./src/util.js": "./src/util.js?v=2026.10.15.0147",
-  "./src/vehicles.js": "./src/vehicles.js?v=2026.10.15.0147",
-  "./src/world.js": "./src/world.js?v=2026.10.15.0147"
+  "three": "./vendor/three.module.js?v=2026.10.15.0149",
+  "rapier": "./vendor/rapier.es.js?v=2026.10.15.0149",
+  "trystero": "./vendor/trystero.js?v=2026.10.15.0149",
+  "./src/audio.js": "./src/audio.js?v=2026.10.15.0149",
+  "./src/avatar.js": "./src/avatar.js?v=2026.10.15.0149",
+  "./src/bots.js": "./src/bots.js?v=2026.10.15.0149",
+  "./src/builder.js": "./src/builder.js?v=2026.10.15.0149",
+  "./src/camera.js": "./src/camera.js?v=2026.10.15.0149",
+  "./src/character.js": "./src/character.js?v=2026.10.15.0149",
+  "./src/chatfilter.js": "./src/chatfilter.js?v=2026.10.15.0149",
+  "./src/data.js": "./src/data.js?v=2026.10.15.0149",
+  "./src/disasters/acid.js": "./src/disasters/acid.js?v=2026.10.15.0149",
+  "./src/disasters/avalanche.js": "./src/disasters/avalanche.js?v=2026.10.15.0149",
+  "./src/disasters/blizzard.js": "./src/disasters/blizzard.js?v=2026.10.15.0149",
+  "./src/disasters/common.js": "./src/disasters/common.js?v=2026.10.15.0149",
+  "./src/disasters/earthquake.js": "./src/disasters/earthquake.js?v=2026.10.15.0149",
+  "./src/disasters/fire.js": "./src/disasters/fire.js?v=2026.10.15.0149",
+  "./src/disasters/flood.js": "./src/disasters/flood.js?v=2026.10.15.0149",
+  "./src/disasters/index.js": "./src/disasters/index.js?v=2026.10.15.0149",
+  "./src/disasters/meteor.js": "./src/disasters/meteor.js?v=2026.10.15.0149",
+  "./src/disasters/sandstorm.js": "./src/disasters/sandstorm.js?v=2026.10.15.0149",
+  "./src/disasters/thunder.js": "./src/disasters/thunder.js?v=2026.10.15.0149",
+  "./src/disasters/tornado.js": "./src/disasters/tornado.js?v=2026.10.15.0149",
+  "./src/disasters/tsunami.js": "./src/disasters/tsunami.js?v=2026.10.15.0149",
+  "./src/disasters/virus.js": "./src/disasters/virus.js?v=2026.10.15.0149",
+  "./src/disasters/volcano.js": "./src/disasters/volcano.js?v=2026.10.15.0149",
+  "./src/effects.js": "./src/effects.js?v=2026.10.15.0149",
+  "./src/input.js": "./src/input.js?v=2026.10.15.0149",
+  "./src/island.js": "./src/island.js?v=2026.10.15.0149",
+  "./src/main.js": "./src/main.js?v=2026.10.15.0149",
+  "./src/maps.js": "./src/maps.js?v=2026.10.15.0149",
+  "./src/maps/arch-park.js": "./src/maps/arch-park.js?v=2026.10.15.0149",
+  "./src/maps/coastal-quickstop.js": "./src/maps/coastal-quickstop.js?v=2026.10.15.0149",
+  "./src/maps/devastation-station.js": "./src/maps/devastation-station.js?v=2026.10.15.0149",
+  "./src/maps/factory-frenzy.js": "./src/maps/factory-frenzy.js?v=2026.10.15.0149",
+  "./src/maps/fort-indestructible.js": "./src/maps/fort-indestructible.js?v=2026.10.15.0149",
+  "./src/maps/furious-station.js": "./src/maps/furious-station.js?v=2026.10.15.0149",
+  "./src/maps/glass-office.js": "./src/maps/glass-office.js?v=2026.10.15.0149",
+  "./src/maps/happy-home.js": "./src/maps/happy-home.js?v=2026.10.15.0149",
+  "./src/maps/heights-school.js": "./src/maps/heights-school.js?v=2026.10.15.0149",
+  "./src/maps/helpers.js": "./src/maps/helpers.js?v=2026.10.15.0149",
+  "./src/maps/launch-land.js": "./src/maps/launch-land.js?v=2026.10.15.0149",
+  "./src/maps/lucky-mart.js": "./src/maps/lucky-mart.js?v=2026.10.15.0149",
+  "./src/maps/manic-mansion.js": "./src/maps/manic-mansion.js?v=2026.10.15.0149",
+  "./src/maps/modest-headquarters.js": "./src/maps/modest-headquarters.js?v=2026.10.15.0149",
+  "./src/maps/party-palace.js": "./src/maps/party-palace.js?v=2026.10.15.0149",
+  "./src/maps/prison-panic.js": "./src/maps/prison-panic.js?v=2026.10.15.0149",
+  "./src/maps/rainbow-ride.js": "./src/maps/rainbow-ride.js?v=2026.10.15.0149",
+  "./src/maps/rakish-refinery.js": "./src/maps/rakish-refinery.js?v=2026.10.15.0149",
+  "./src/maps/raving-raceway.js": "./src/maps/raving-raceway.js?v=2026.10.15.0149",
+  "./src/maps/safety-second.js": "./src/maps/safety-second.js?v=2026.10.15.0149",
+  "./src/maps/sky-tower.js": "./src/maps/sky-tower.js?v=2026.10.15.0149",
+  "./src/maps/sunny-ranch.js": "./src/maps/sunny-ranch.js?v=2026.10.15.0149",
+  "./src/maps/surf-central.js": "./src/maps/surf-central.js?v=2026.10.15.0149",
+  "./src/maps/trailer-park.js": "./src/maps/trailer-park.js?v=2026.10.15.0149",
+  "./src/materials.js": "./src/materials.js?v=2026.10.15.0149",
+  "./src/nav.js": "./src/nav.js?v=2026.10.15.0149",
+  "./src/net.js": "./src/net.js?v=2026.10.15.0149",
+  "./src/round.js": "./src/round.js?v=2026.10.15.0149",
+  "./src/ui.js": "./src/ui.js?v=2026.10.15.0149",
+  "./src/util.js": "./src/util.js?v=2026.10.15.0149",
+  "./src/vehicles.js": "./src/vehicles.js?v=2026.10.15.0149",
+  "./src/world.js": "./src/world.js?v=2026.10.15.0149"
 } }
 </script>
 <script>
@@ -224,7 +224,7 @@
       <button id="play-btn" aria-label="Play"><svg viewBox="0 0 24 24" width="34" height="34"><path fill="#fff" d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5Z"/></svg></button>
       <div class="xp-stats"><div><b>Genre</b><span>Survival</span></div><div><b>Max Players</b><span>30</span></div><div><b>Created</b><span>2026</span></div><div><b>Playing</b><span id="xp-active">…</span></div></div>
       <p class="xp-desc">Survive a series of natural disasters! The map and disaster are chosen at random each round. Read the warning, pick your spot, and stay alive until the timer runs out.</p>
-      <p class="xp-foot">Unofficial tribute. Not affiliated with or endorsed by Roblox Corporation. <span class="xp-build">Build 2026.10.15.0147</span></p>
+      <p class="xp-foot">Unofficial tribute. Not affiliated with or endorsed by Roblox Corporation. <span class="xp-build">Build 2026.10.15.0149</span></p>
     </div>
   </div>
 </div>
@@ -233,6 +233,6 @@
   <div class="ld-spin"></div>
 </div>
 
-<script type="module" src="src/main.js?v=2026.10.15.0147"></script>
+<script type="module" src="src/main.js?v=2026.10.15.0149"></script>
 </body>
 </html>

@@ -9,7 +9,7 @@ import { rand } from '../util.js';
 // 4th dissolves it. The rain itself stings anyone standing out in it.
 const GREY = 0x8e8e8e, GREEN = 0x4fbf3a, BLACK = 0x141414;
 const SLANT = 0.6;          // sideways studs per stud of fall
-const DROPS = 5;            // drops that land on the island every quarter second (host)
+const DROP_RATE = 10;       // drops landing on the island a second (host): big roofs last about half the round
 
 export default {
   name: 'Acid Rain',
@@ -98,7 +98,8 @@ export default {
     if (isHost(g)) {
       // drops corrode the first thing they hit on the way down
       const f = st.fall, back = 220 / -f.y;
-      for (let i = 0; i < DROPS; i++) {
+      st.owed = (st.owed || 0) + DROP_RATE * 0.25;
+      for (; st.owed >= 1; st.owed--) {
         const p = randomIslandPoint(-12);
         const from = V(p.x - f.x * back, 220, p.z - f.z * back);
         const hit = g.world.raycast(from, f, back + 40);

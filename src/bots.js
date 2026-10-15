@@ -253,7 +253,7 @@ export class BotBrain {
     // Red Apple when hurt
     if (c.items.apple && c.health < 60 && c.alive && (c.appleCd || 0) < g.time) {
       if (c.equipped !== 'apple') c.equip('apple');
-      c.appleCd = g.time + 5; c.heal(c.maxHealth * 0.15); c.avatar.swing = 1; c.swings++;
+      c.appleCd = g.time + 5.5; c.heal(15); c.avatar.swing = 1; c.swings++;
     }
     // Green Balloon to float above rising water
     const water = g.waterLevel;

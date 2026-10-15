@@ -3,7 +3,7 @@
 // Inside buildings the bots follow the stair/ladder waypoints the map builder made;
 // this grid gets them to the door (or ladder) from anywhere on the island.
 import * as THREE from 'three';
-import { ISLAND_HALF } from './util.js';
+import { ISLAND_HALF, insideIsland } from './util.js';
 
 const CELL = 2, R = 0.75;         // cell size, clearance kept around bricks
 const BODY_LO = 0.6, BODY_HI = 5.3;   // a character is 5 studs tall
@@ -75,6 +75,12 @@ export class NavGrid {
         }
         this.block[k] = 1;
       });
+    }
+    // the sea round the oval island isn't walkable (docks and bridges built out over it are)
+    for (let k = 0; k < n * n; k++) {
+      if (this.floor[k] > 0.25) continue;
+      const cx = (k % n) * CELL - this.half + CELL / 2, cz = Math.floor(k / n) * CELL - this.half + CELL / 2;
+      if (!insideIsland(cx, cz, -2)) this.block[k] = 1;
     }
     this.builtAt = time;
   }
