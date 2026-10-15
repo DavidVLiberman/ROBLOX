@@ -214,7 +214,7 @@ export class BotBrain {
         for (const m of st.list || []) {
           const t = (m.pos.y - P.y) / Math.max(1, -m.vel.y);
           const lx = m.pos.x + m.vel.x * t, lz = m.pos.z + m.vel.z * t;
-          if (t < 2.5 && Math.hypot(lx - P.x, lz - P.z) < 9) add(away(lx, lz, 3));
+          if (t < 2.5 && Math.hypot(lx - P.x, lz - P.z) < m.r + 7) add(away(lx, lz, 3));
         }
       }
       if (n === 'Avalanche' && st.chunks && st.dir) {
@@ -370,6 +370,7 @@ export class BotBrain {
         if (sky === 'dark') this.chooseSpot('high-ish');
         else if (sky === 'snowy' || sky === 'white') this.chooseSpot('indoor');
         else if (sky === 'yellow') this.chooseSpot('upwind');
+        else if (g.round.active.some(a => a.def.name === 'Avalanche')) this.chooseSpot('away-mountain');   // the mountain is in plain sight
       }
       if (this.follow(dt) !== 'moving') { this.wait -= dt; if (this.wait <= 0) this.explore(); }
       return;
@@ -390,7 +391,7 @@ export class BotBrain {
         const flee = rand() < 0.2 + this.smart ? this.danger() : null;
         if (flee) {
           const t = c.pos.clone().addScaledVector(flee.normalize(), 12);
-          t.x = clamp(t.x, -150, 150); t.z = clamp(t.z, -150, 150);
+          { const k = Math.hypot(t.x / 150, t.z / 134); if (k > 1) { t.x /= k; t.z /= k; } }   // stay on the oval island
           this.setPath([t], null);
           this.dodgeUntil = g.time + 1.2;
         } else if (this.dodgeUntil && g.time > this.dodgeUntil) {

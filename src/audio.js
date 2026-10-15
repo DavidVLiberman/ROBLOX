@@ -155,4 +155,78 @@ export class Audio {
   }
   badge() { [784, 988, 1175].forEach((f, i) => this.tone(f, 0.5, { type: 'triangle', gain: 0.15, delay: i * 0.09, ui: true })); }
   lava(pos) { this.noise('brown', 0.5, { freq: 300, gain: 0.5, pos }); }
+
+  // ---- lobby / round GUI sounds (sound-alikes, synthesized) ----
+  // A crowd clapping: lots of short, bright noise bursts that swell and die away.
+  applause(dur = 3.2) {
+    if (!this.ctx) return;
+    const n = Math.round(dur * 34);
+    for (let i = 0; i < n; i++) {
+      const t = Math.pow(Math.random(), 1.35) * dur;
+      const env = Math.min(1, t / 0.35) * Math.max(0.15, 1 - t / dur);
+      this.noise('white', 0.035 + Math.random() * 0.03, { filter: 'bandpass', freq: 900 + Math.random() * 1900, q: 1.4, gain: (0.06 + Math.random() * 0.1) * env, attack: 0.002, delay: t, ui: true });
+    }
+    this.noise('white', dur, { filter: 'bandpass', freq: 1500, q: 0.5, gain: 0.025, attack: 0.3, ui: true });
+  }
+  // the Power Up Machine winding up (bought a power-up) / winding down (round used it)
+  powerUp(pos = null) {
+    this.tone(160, 0.7, { type: 'sawtooth', gain: 0.07, freqEnd: 900, attack: 0.03, pos, ui: !pos });
+    this.tone(320, 0.7, { type: 'square', gain: 0.03, freqEnd: 1800, attack: 0.03, pos, ui: !pos });
+    [988, 1319, 1760].forEach((f, i) => this.tone(f, 0.25, { type: 'triangle', gain: 0.07, delay: 0.55 + i * 0.07, pos, ui: !pos }));
+  }
+  powerDown(pos = null) {
+    this.tone(900, 1.1, { type: 'sawtooth', gain: 0.06, freqEnd: 90, attack: 0.02, pos, ui: !pos });
+    this.tone(450, 1.1, { type: 'square', gain: 0.025, freqEnd: 45, attack: 0.02, pos, ui: !pos });
+    this.noise('brown', 0.8, { freq: 600, freqEnd: 120, gain: 0.15, delay: 0.3, pos, ui: !pos });
+  }
+  // party popper for the welcome screen's confetti
+  confettiPop() {
+    this.noise('white', 0.09, { filter: 'highpass', freq: 900, gain: 0.5, attack: 0.002, ui: true });
+    this.tone(180, 0.12, { type: 'sine', gain: 0.25, freqEnd: 60, ui: true });
+    for (let i = 0; i < 6; i++) this.tone(2000 + Math.random() * 2500, 0.18, { type: 'triangle', gain: 0.04, delay: 0.08 + Math.random() * 0.35, ui: true });
+  }
+
+  // ---- disaster sounds (sound-alikes, synthesized) ----
+  // Let a loop ring on for `hold` seconds after its disaster ends, then fade out over
+  // `fade` seconds. It leaves this.loops at once, so stopLoops() at the end of the
+  // round doesn't cut it short (the tornado's roar dies away like this).
+  fadeLoop(name, hold = 2, fade = 5) {
+    const l = this.loops[name];
+    if (!this.ctx || !l) return;
+    delete this.loops[name];
+    const t = this.ctx.currentTime, v = l.g.gain.value;
+    l.g.gain.cancelScheduledValues(t);
+    l.g.gain.setValueAtTime(v, t);
+    l.g.gain.setValueAtTime(v, t + hold);
+    l.g.gain.linearRampToValueAtTime(0, t + hold + fade);
+    l.src.stop(t + hold + fade + 0.1);
+  }
+  // a voiced sound: a buzzy tone through a vowel-like filter, gliding in pitch
+  voice(f0, f1, dur, { gain = 0.2, formant = 800, q = 4, delay = 0, pos = null } = {}) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + delay;
+    const o = this.ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = formant; f.Q.value = q;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain * this.att(pos), t + dur * 0.6);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(f); f.connect(g); g.connect(this.fx);
+    o.start(t); o.stop(t + dur + 0.05);
+    this.noise('white', dur, { filter: 'bandpass', freq: formant * 1.6, q: 1.5, gain: gain * 0.5, attack: dur * 0.5, delay, pos });
+  }
+  // "ah... ah... CHOO!"
+  sneeze(pos) {
+    this.voice(300, 420, 0.32, { gain: 0.16, formant: 850, pos });
+    this.voice(330, 520, 0.38, { gain: 0.2, formant: 900, delay: 0.38, pos });
+    this.noise('white', 0.3, { filter: 'bandpass', freq: 2800, q: 0.9, gain: 0.75, attack: 0.004, delay: 0.82, pos });
+    this.noise('white', 0.22, { filter: 'lowpass', freq: 1100, gain: 0.45, attack: 0.004, delay: 0.84, pos });
+  }
+  // a cat's tiny sneeze: a quick high squeak and a little puff of air
+  catSneeze(pos) {
+    this.tone(1300, 0.09, { type: 'triangle', gain: 0.12, freqEnd: 1900, pos });
+    this.noise('white', 0.12, { filter: 'highpass', freq: 3500, gain: 0.5, attack: 0.003, delay: 0.1, pos });
+    this.tone(2100, 0.06, { type: 'sine', gain: 0.08, freqEnd: 1500, delay: 0.11, pos });
+  }
 }

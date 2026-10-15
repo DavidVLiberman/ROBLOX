@@ -6,7 +6,7 @@ import { rand } from '../util.js';
 // buildings; stand upwind of them.
 export default {
   name: 'Sandstorm',
-  warning: 'Sandstorm! Dodge flying objects',
+  warning: 'Sandstorm! Dodge flying objects!',
   duration: 90,
   bot: 'upwind',
   params() { return { a: Math.round(rand() * 6283) / 1000 }; },
@@ -15,6 +15,8 @@ export default {
     st.dir = V(Math.cos(a), 0, Math.sin(a));
     g.windDir = st.dir;
     g.effects.setSky('yellow');
+    // the wind picks up before the storm arrives
+    g.audio.loop('wind', true, { freq: 600, q: 0.7, gain: 0.14, lfo: 0.3 });
   },
   start(g, st) {
     if (!st.dir) this.preWarn(g, st);
@@ -64,7 +66,7 @@ export default {
   },
   stop(g, st) {
     g.effects.setWeather('sand', false);
-    g.audio.loop('sand', false);
+    g.audio.loop('sand', false); g.audio.loop('wind', false);
     g.windDir = null;
   },
 };

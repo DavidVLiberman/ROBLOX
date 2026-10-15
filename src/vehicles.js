@@ -1,7 +1,7 @@
 // Drivable cars: the parts stay anchored and are moved as a group.
 // In multiplayer the driver's machine drives the car and tells everyone where it is.
 import * as THREE from 'three';
-import { clamp, RIM_HALF } from './util.js';
+import { clamp, insideIsland } from './util.js';
 
 const _q = new THREE.Quaternion(), _y = new THREE.Vector3(0, 1, 0);
 
@@ -80,7 +80,7 @@ export function stepVehicles(game, dt) {
         return;
       }
       const np = v.pos.clone().add(move);
-      if (Math.abs(np.x) > RIM_HALF - 4 || Math.abs(np.z) > RIM_HALF - 4) { v.speed = 0; return; }
+      if (!insideIsland(np.x, np.z, 3)) { v.speed = 0; return; }
       v.pos.copy(np);
       placeParts(game, v);
       sendState(game, v, vi, false);

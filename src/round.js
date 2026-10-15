@@ -6,8 +6,12 @@ import { DISASTERS } from './disasters/index.js';
 import { pick, shuffle, rand, setSeed } from './util.js';
 import { COMBO_BADGES } from './data.js';
 import { botChat } from './bots.js';
+import { POWER_MAX } from './island.js';
 
-export const TIMES = { intermission: 15, announce: 5, roam: 20, prewarn: 15, survivors: 6 };
+// roam: teleport -> disaster warning (about 40 s, like the original script);
+// prewarn: seconds left in roam when the weather starts to change (1 s after teleport)
+export const TIMES = { intermission: 15, announce: 5, roam: 40, prewarn: 39, survivors: 6 };
+const POWER_QUEUE_MAX = 99;
 
 export class RoundManager {
   constructor(game, opts = {}) {
@@ -16,7 +20,7 @@ export class RoundManager {
     this.phase = 'intermission';
     this.timer = opts.fast ? 4 : TIMES.intermission;
     this.history = [];
-    this.multi = 0;
+    this.multi = 0;          // power-ups queued on the Power Up Machine (more than 6 carry over)
     this.active = [];
     this.votes = null;
     this.totalRounds = 0;
@@ -39,13 +43,30 @@ export class RoundManager {
     };
   }
 
+  // disasters next round (1 + the power-ups it will use)
+  power() { return 1 + Math.min(POWER_MAX, this.multi); }
+
+  // buy a power-up: the next round gets one more disaster (up to 7 in total);
+  // power-ups past that wait on the machine for the rounds after
   addMulti() {
     if (!this.host) { this.g.net?.send({ t: 'req', k: 'multi' }, this.g.net.hostId); return true; }
-    if (this.multi >= 7) return false;
-    this.multi++;
-    this.g.island.drawWeatherMachine(this.multi);
+    if (this.multi >= POWER_QUEUE_MAX) return false;
+    this.setMulti(this.multi + 1);
     this.broadcast();
     return true;
+  }
+
+  powerText() {
+    const saved = Math.max(0, this.multi - POWER_MAX);
+    return `Power ${this.power()}/7${saved ? `, +${saved} saved for later rounds` : ''}`;
+  }
+
+  setMulti(n) {
+    const g = this.g, isl = g.island;
+    if (g.started && n > this.multi) { g.audio.powerUp?.(isl.powerUpMachine); if (isl.pmTop) g.effects.puff?.(isl.pmTop.clone(), 0xeeeeee, 2.5, 1.6); }
+    else if (g.started && n < this.multi) g.audio.powerDown?.(isl.powerUpMachine);
+    this.multi = n;
+    isl.drawPowerUp(n);
   }
 
   pickMap() {
@@ -54,9 +75,12 @@ export class RoundManager {
       if (m) return m;
     }
     if (this.votes) {
-      let best = null, bc = 0;
-      for (const [name, n] of this.votes.counts) if (n > bc) { bc = n; best = name; }
-      if (best) return MAPS.find(m => m.name === best);
+      // most votes wins; a tie is broken at random
+      let bc = 0, best = [];
+      for (const [name, n] of this.votes.counts) {
+        if (n > bc) { bc = n; best = [name]; } else if (n === bc && n > 0) best.push(name);
+      }
+      if (best.length) return MAPS.find(m => m.name === pick(best));
     }
     const pool = MAPS.filter(m => !this.history.includes(m.name));
     return pick(pool.length ? pool : MAPS);
@@ -75,7 +99,8 @@ export class RoundManager {
     this.votes = { options: pool.map(m => m.name), counts: new Map(pool.map(m => [m.name, 0])), by: new Map(), mine: null };
     // bots with a compass vote too
     for (const c of this.g.bots) if (c.alive && rand() < 0.3) this.vote(pick(this.votes.options), c);
-    if (this.g.player.items.compass) this.g.ui.showVote(this.votes);
+    // (only a Yellow Compass that is out shows the vote)
+    this.g.ui.voteOpened(this.votes);
     this.broadcast();
   }
 
@@ -147,7 +172,8 @@ export class RoundManager {
     switch (this.phase) {
       case 'intermission':
         g.ui.status('Intermission', Math.ceil(this.timer));
-        if (!this.votes && this.timer <= 10) this.startVote();
+        // the map vote is open for the whole intermission (for anyone with a compass)
+        if (!this.votes) this.startVote();
         if (this.timer <= 0) {
           g.ui.hideVote();
           const def = this.pickMap();
@@ -156,6 +182,7 @@ export class RoundManager {
           this.loadMap(def, (Math.random() * 0x7fffffff) | 0);
           this.phase = 'announce'; this.timer = this.T.announce;
           g.ui.status(`Map: ${def.name}`);
+          g.ui.showNextMap(def.name);
           g.audio.click();
           this.broadcast();
         }
@@ -164,10 +191,11 @@ export class RoundManager {
         g.ui.status(`Map: ${this.mapName}`);
         if (this.timer <= 0) {
           this.roundNo++;
-          const n = 1 + this.multi;
+          const n = this.power();
           const defs = this.pickDisasters(n);
-          this.multi = 0;
-          g.island.drawWeatherMachine(0);
+          // this round uses up to 6 power-ups; any more stay on the machine
+          this.setMulti(this.multi - (n - 1));
+          g.ui.hideNextMap();
           // the host makes every random choice up front (directions, spots) and shares them
           this.makeActive(defs.map(def => ({ def, p: def.params?.(g) || {} })));
           // teleport every living, non-AFK player
@@ -252,12 +280,19 @@ export class RoundManager {
     for (const c of g.bots) if (survivors.includes(c)) { c.survivals++; c.streak++; }
     if (g.bots.length) g.net?.send({ t: 'ents', add: g.bots.map(b => [b.eid, b.name, b.avatar.colors, b.survivals]) });
     this.showSurvivors(list, survivors.includes(g.player));
-    // bots sometimes buy Multi-Disaster for the next round
+    // bots sometimes buy a power-up for the next round
     const buyer = pick(g.bots);
     if (buyer && rand() < 0.12 && this.addMulti()) {
-      const text = `${buyer.name} added a disaster with the Weather Machine! (${this.multi}/7)`;
+      const text = `${buyer.name} powered up the Power Up Machine! (${this.powerText()})`;
       if (g.net) g.net.broadcastSystem(text); else g.ui.system(text);
     }
+  }
+
+  // GET TO THE CHOPPA!: seated in the helicopter, or standing on one of its parts
+  inChopper(c) {
+    if (c.seat?.tags?.has('helicopter') || c.groundPart?.tags?.has('helicopter')) return true;
+    const hit = this.g.world.raycast({ x: c.pos.x, y: c.pos.y + 1, z: c.pos.z }, { x: 0, y: -1, z: 0 }, 3);
+    return !!hit?.object?.tags?.has('helicopter');
   }
 
   // survivors screen + the local player's stats and badges (every machine)
@@ -273,16 +308,16 @@ export class RoundManager {
       g.data.d.bestStreak = Math.max(g.data.d.bestStreak, p.streak);
       g.data.save();
       for (const [k, id] of [[1, 'survive1'], [10, 'survive10'], [25, 'survive25'], [50, 'survive50'], [100, 'survive100'], [200, 'survive200'], [400, 'survive400'], [1000, 'survive1000']]) if (p.survivals >= k) g.awardBadge(id);
-      if (p.streak >= 3) g.awardBadge('streak3');
       if (p.streak >= 5) g.awardBadge('streak5');
-      if (p.health < 10) g.awardBadge('closecall');
+      if (p.health <= 10) g.awardBadge('closecall');
       if (n >= 2) g.awardBadge('multi' + Math.min(7, n));
       for (const [m, d, id] of COMBO_BADGES) if (this.mapName === m && names.includes(d)) g.awardBadge(id);
+      if (names.includes('Thunder Storm') && this.inChopper(p)) g.awardBadge('choppa');
       g.net?.sendHi();
     }
-    g.ui.showSurvivors(list.map(s => ({ name: s.name, health: s.health, max: s.max })));
+    g.ui.showSurvivors(list.map(s => s.name));
     botChat(g, 'survived');
-    g.audio.chime();
+    g.audio.applause?.();
     g.audio.stopLoops();
     g.ui.status('Survivors');
     g.island.drawBoard(this.totalRounds, [...g.chars].sort((a, b) => b.survivals - a.survivals), this.lastSurvivors);
@@ -293,7 +328,7 @@ export class RoundManager {
     const g = this.g;
     switch (this.phase) {
       case 'intermission': g.ui.status('Intermission', Math.ceil(Math.max(0, this.timer))); break;
-      case 'announce': case 'roam': g.ui.status(`Map: ${this.mapName}`); break;
+      case 'announce': case 'roam': g.ui.status(`Map: ${this.mapName || ''}`); break;
       case 'disaster': this.disasterTick(dt); break;
       case 'survivors': g.ui.status('Survivors'); break;
     }
@@ -309,14 +344,14 @@ export class RoundManager {
   applyNet(s) {
     const g = this.g;
     if (Math.abs(this.timer - s.tm) > 0.4 || s.ph !== this.phase) this.timer = s.tm;
-    if (s.multi !== this.multi) { this.multi = s.multi; g.island.drawWeatherMachine(s.multi); }
+    if (s.multi !== this.multi) this.setMulti(s.multi);
     this.totalRounds = s.tr;
     // map vote
     if (s.votes) {
       const fresh = !this.votes || this.votes.options.join() !== s.votes.o.join();
       if (fresh) this.votes = { options: s.votes.o, counts: new Map(), by: new Map(), mine: null };
       s.votes.o.forEach((n, i) => this.votes.counts.set(n, s.votes.c[i]));
-      if (fresh && g.player.items.compass) g.ui.showVote(this.votes); else g.ui.updateVote?.(this.votes);
+      if (fresh) g.ui.voteOpened(this.votes); else g.ui.updateVote?.(this.votes);
     } else if (this.votes) { this.votes = null; g.ui.hideVote(); }
 
     const prev = this.phase;
@@ -338,7 +373,8 @@ export class RoundManager {
     this.phase = s.ph;
     this.duration = s.du;
     if (s.ph === prev) return;
-    if (s.ph === 'announce') g.ui.hideVote();
+    if (s.ph === 'announce') { g.ui.hideVote(); if (this.mapName) g.ui.showNextMap(this.mapName); }
+    if (s.ph === 'roam' || s.ph === 'disaster' || s.ph === 'intermission') g.ui.hideNextMap();
     if (s.ph === 'disaster' && this.active.length && !this.active[0].st.started) {
       this.startAll(prev === 'roam' ? 0 : s.el);
       g.player.minHealthThisRound = g.player.health;

@@ -1,19 +1,28 @@
 import * as THREE from 'three';
-import { V, isHost, locals, emit, toArr, fromArr } from './common.js';
+import { V, isHost, locals, emit, toArr, fromArr, islandEdge, randomIslandPoint } from './common.js';
 import { rand, clamp } from '../util.js';
 import { getMaterial, tickLava } from '../materials.js';
 
-const H = 85, D = 120, R = 212;        // size and distance from the island centre
+const H = 85;                           // height of the crater rim
+const R0 = 62, R1 = 24, WALL = 7;       // cone radius at sea level and at the rim, wall thickness
+const SEG = 24;                         // the cone is built from SEG slabs around, in rings
+const RINGS = [[-10, 24], [24, 56], [56, H]];
+const WATER_Y = H - 5;                  // the crater is hollow and full of sea water up to here
 const RISE = 12, ERUPT = 15;            // seconds after the warning
-// tints of the lava material: from white-hot to deep red
-const LAVA_COLORS = [0xffffff, 0xffe2c4, 0xffc89a, 0xff9a70];
+// tints of the lava material (instance colours, linear, may go past 1): red and yellow
+// blocks, and now and then a dull brown one
+const RED = new THREE.Color(1, 0.06, 0.03), YELLOW = new THREE.Color(1.2, 9, 0.5), BROWN = new THREE.Color(0.24, 0.13, 0.06);
+const LAVA_COLORS = [RED, YELLOW, BROWN];
 const CRUST = new THREE.Color(0x3a0d05);
 const COOL = 4;                         // seconds a landed block takes to dim before it turns to obsidian
+const coneR = (y) => R0 - (R0 - R1) * y / H;
+const blockGeo = new THREE.BoxGeometry(1, 1, 1);
 
 // The volcano rises out of the sea next to the island with the warning and starts
-// erupting about 15 seconds later. It throws big red and yellow lava blocks that smash
-// through buildings and kill whoever they hit; blocks lying on the island cool into
-// obsidian after a while. Climbing onto the volcano is deadly.
+// erupting about 15 seconds later. Its crater is hollow and full of sea water. It throws
+// big red and yellow lava blocks (now and then a brown one) that smash through buildings
+// and kill whoever they hit; blocks lying on the island cool into obsidian after a while.
+// Climbing onto the volcano is deadly.
 export default {
   name: 'Volcanic Eruption',
   warning: 'Volcanic Eruption! Get away from the volcano',
@@ -23,6 +32,8 @@ export default {
   params() { return { a: Math.round((-Math.PI / 2 + 1.1 + rand() * (Math.PI * 2 - 2.2)) * 1000) / 1000 }; },
   start(g, st) {
     const a = st.p.a ?? 0;
+    // just off the shore: the foot of the cone starts where the grass ends
+    const R = islandEdge(Math.cos(a), Math.sin(a)) + R0 + 6;
     st.pos = V(Math.cos(a) * R, 0, Math.sin(a) * R);
     g.hazardPos = st.pos.clone();
     st.t = st.late || 0;
@@ -35,9 +46,18 @@ export default {
       g.trackTemp(p);
       return p;
     };
-    mk({ pos: [st.pos.x, -H, st.pos.z], size: [D, H, D], color: 0x57504b, mat: 'slate', shape: 'frustum' }, H / 2);
-    mk({ pos: [st.pos.x, -H, st.pos.z], size: [D * 0.55, H * 0.35, D * 0.55], color: 0x35302d, mat: 'slate', shape: 'frustum' }, H * 0.84);
-    mk({ pos: [st.pos.x, -H, st.pos.z], size: [D * 0.22, 1.2, D * 0.22], color: 0xffffff, mat: 'lava', shape: 'cyl' }, H + 0.3);
+    // the hollow cone: rings of slabs lying on the slope
+    RINGS.forEach(([y0, y1], k) => {
+      const w = 2 * coneR(y0) * Math.tan(Math.PI / SEG) * 1.05;
+      for (let i = 0; i < SEG; i++) {
+        const ang = (i + (k % 2) * 0.5) / SEG * Math.PI * 2;
+        const { q, n, len, mid } = this.slab(ang, y0, y1);
+        mk({ pos: [st.pos.x + mid.x - n.x * WALL / 2, -H, st.pos.z + mid.z - n.z * WALL / 2], size: [w, len, WALL], color: k === 2 ? 0x45403c : 0x57504b, mat: 'slate', rot: q }, mid.y - n.y * WALL / 2);
+      }
+    });
+    // the crater lake
+    const lake = (R1 - WALL) * 2 + 4;
+    mk({ pos: [st.pos.x, -H, st.pos.z], size: [lake, 1, lake], color: 0x2a74b8, mat: 'water', shape: 'cyl', collide: false }, WATER_Y);
     // lava running down the slopes, mostly on the side facing the island
     for (const off of [-0.85, -0.3, 0.3, 0.9, 2.5]) this.stream(mk, st, a + Math.PI + off);
     st.rise = Math.min(1, st.t / RISE);
@@ -45,19 +65,26 @@ export default {
     g.audio.loop('rumble', true, { type: 'brown', freq: 120, gain: 0.5 });
     g.shakeAll(0.6, RISE);
   },
-  // a lava stream from the crater rim down the cone: one strip on the steep top,
-  // one on the lower slope, lying on the surface (radius of each cone at height y)
-  stream(mk, st, ang) {
+  // a slab of the cone at angle `ang` between heights y0 and y1: its rotation (local x
+  // around the cone, y up the slope, z out of it), outward normal, length and the middle
+  // of its outer face (relative to the volcano's centre)
+  slab(ang, y0, y1) {
     const c = Math.cos(ang), s = Math.sin(ang);
-    const upper = (y) => D * 0.55 * 0.15 + (H * 1.015 - y) * (D * 0.55 * 0.35) / (H * 0.35);
-    const lower = (y) => D * 0.15 + (H - y) * (D * 0.35) / H;
-    for (const [rad, y0, y1, w] of [[upper, H + 0.6, H * 0.675, 4.5], [lower, H * 0.66, H * 0.22, 3.5]]) {
-      const r0 = rad(y0), r1 = rad(y1), dr = r1 - r0, dy = y1 - y0, len = Math.hypot(dr, dy);
-      const z = V(c * dr / len, dy / len, s * dr / len), x = V(s, 0, -c), y = new THREE.Vector3().crossVectors(z, x);
-      const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
-      // sunk a little into the faceted cone so it never floats above it
-      const rm = (r0 + r1) / 2 - 0.2 * (-dy / len), ym = (y0 + y1) / 2 - 0.2 * (dr / len);
-      mk({ pos: [st.pos.x + c * rm, -H, st.pos.z + s * rm], size: [w, 1.6, len + 1.5], color: 0xffd9b8, mat: 'lava', rot: q, collide: false }, ym);
+    const dr = coneR(y0) - coneR(y1), dy = y1 - y0, len = Math.hypot(dr, dy);
+    const up = V(-c * dr / len, dy / len, -s * dr / len);
+    const n = V(c * dy / len, dr / len, s * dy / len);
+    const x = V(s, 0, -c);
+    const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, up, n));
+    const ym = (y0 + y1) / 2, rm = coneR(ym);
+    return { q, n, len, mid: V(c * rm, ym, s * rm) };
+  },
+  // a lava stream from the rim down the cone, lying on the middle of a slab
+  stream(mk, st, ang) {
+    const step = Math.PI * 2 / SEG;
+    ang = Math.round(ang / step) * step;
+    for (const [y0, y1] of [[24, H], [H * 0.22, 24]]) {
+      const { q, n, len, mid } = this.slab(ang, y0, y1);
+      mk({ pos: [st.pos.x + mid.x + n.x * 0.3, -H, st.pos.z + mid.z + n.z * 0.3], size: [4, len, 0.8], color: 0xffd9b8, mat: 'lava', rot: q, collide: false }, mid.y + n.y * 0.3);
     }
   },
   place(g, st) {
@@ -74,16 +101,21 @@ export default {
   // host: throw a lava block at the map
   launch(g, st) {
     const c = this.crater(st);
-    const target = V((rand() * 2 - 1) * 105, 0, (rand() * 2 - 1) * 105);
+    const target = randomIslandPoint(15);
     const T = 3 + rand() * 1.6, G = 60;
     const vel = target.clone().sub(c).divideScalar(T);
     vel.y += 0.5 * G * T;
-    emit(g, st, { k: 'b', v: toArr(vel), r: Math.round((1.4 + rand() * 2) * 100) / 100, c: Math.floor(rand() * LAVA_COLORS.length) });
+    const kind = rand();
+    emit(g, st, { k: 'b', v: toArr(vel), r: Math.round((1.4 + rand() * 2) * 100) / 100, c: kind < 0.07 ? 2 : kind < 0.535 ? 0 : 1 });
   },
   onEvent(g, st, ev) {
     if (ev.k !== 'b') return;
     const color = LAVA_COLORS[ev.c] || LAVA_COLORS[0];
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(ev.r * 2, ev.r * 2, ev.r * 2), getMaterial('lava'));
+    // a one-instance InstancedMesh so the lava shader gets the block's tint in flight too
+    const mesh = new THREE.InstancedMesh(blockGeo, getMaterial('lava'), 1);
+    mesh.setMatrixAt(0, new THREE.Matrix4().makeScale(ev.r * 2, ev.r * 2, ev.r * 2));
+    mesh.setColorAt(0, color);
+    mesh.frustumCulled = false;
     g.scene.add(mesh);
     st.blobs.push({ mesh, pos: this.crater(st), vel: fromArr(ev.v), r: ev.r, color, pierce: 3, spin: V(rand() - .5, rand() - .5, rand() - .5).multiplyScalar(5) });
     if (Math.random() < 0.3) g.audio.lava(this.crater(st));
@@ -97,9 +129,11 @@ export default {
       // shove anything inside the cone aside
       const top = -H + H * st.rise + H;
       if (isHost(g)) {
-        for (const p of g.world.partsNear(st.pos, D / 2 + 4, q => !q.tags.has('volcano') && !q.tags.has('indestructible'))) {
+        const base = top - H;
+        for (const p of g.world.partsNear(st.pos, R0 + 4, q => !q.tags.has('volcano') && !q.tags.has('indestructible'))) {
           const t = p.body.translation();
-          if (t.y < top) { const dir = V(t.x - st.pos.x, 0, t.z - st.pos.z).normalize(); g.world.unanchor(p, { x: dir.x * 20, y: 15, z: dir.z * 20 }); }
+          const d = Math.hypot(t.x - st.pos.x, t.z - st.pos.z);
+          if (t.y < top && d < coneR(clamp(t.y - base, 0, H)) + 3) { const dir = V(t.x - st.pos.x, 0, t.z - st.pos.z).normalize(); g.world.unanchor(p, { x: dir.x * 20, y: 15, z: dir.z * 20 }); }
         }
       }
     }
@@ -155,7 +189,7 @@ export default {
         } else if (b.pos.y + step.y <= b.r) landed = V(b.pos.x + step.x, 0, b.pos.z + step.z);
       }
       if (landed) {
-        g.scene.remove(b.mesh); b.mesh.geometry.dispose();
+        g.scene.remove(b.mesh); b.mesh.dispose();
         st.blobs.splice(i, 1);
         if (!g.island.onIsland(landed) || landed.y < -2) { g.effects.puff(landed.clone().setY(-4), 0xdddddd, 10, 2, V(0, 8, 0)); continue; }
         const part = g.world.addPart({ pos: [landed.x, landed.y + b.r, landed.z], size: [b.r * 2, b.r * 2, b.r * 2], color: b.color, mat: 'lava', rot: [0, rand() * 90, 0], tags: ['lava', 'indestructible'] });
@@ -193,7 +227,7 @@ export default {
     }
   },
   stop(g, st) {
-    for (const b of st.blobs || []) { g.scene.remove(b.mesh); b.mesh.geometry.dispose(); }
+    for (const b of st.blobs || []) { g.scene.remove(b.mesh); b.mesh.dispose(); }
     st.blobs = [];
     st.erupting = false;
     g.audio.loop('rumble', false);

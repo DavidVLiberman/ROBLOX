@@ -3,15 +3,16 @@ import { mapParts, isHost, locals } from './common.js';
 import { rand } from '../util.js';
 
 const CHAR = new THREE.Color(0x1d1a18);
-const HOT = [new THREE.Color(0xffd23a), new THREE.Color(0xff8a1e), new THREE.Color(0xe8401c)];
+// burning bricks turn clearly yellow, orange or red
+const HOT = [new THREE.Color(0xffd21f), new THREE.Color(0xff7a12), new THREE.Color(0xe02a12)];
 
 // Fire starts at the map's fire start and spreads brick to brick (never onto grass).
-// A brick with small flames is heating up and about to catch; burning bricks glow
-// yellow, orange or red and hurt to touch; burnt-out bricks are black and safe,
-// and some of them fall away.
+// A brick with small flames is heating up and about to catch; burning bricks turn
+// yellow, orange or red and take 40 health per touch; burnt-out bricks are black and
+// safe, and some of them fall away. It is NDS's only disaster without a sound.
 export default {
   name: 'Fire',
-  warning: 'Fire! Keep distance from the fire',
+  warning: 'Fire! Keep distance from the fire!',
   duration: 95,
   bot: 'away-fire',
   start(g, st) {
@@ -22,7 +23,6 @@ export default {
     if (!starts.length) { const all = mapParts(g); if (all.length) starts = [all[Math.floor(rand() * all.length)]]; }
     if (isHost(g)) for (const p of starts) this.ignite(g, st, p);
     g.hazardPos = starts[0] ? starts[0].position : null;
-    g.audio.loop('fire', true, { freq: 3000, filter: 'highpass', gain: 0.12, lfo: 6 });
   },
   flammable(p) {
     return p.alive && !p.burnt && !p.tags.has('indestructible') && !p.tags.has('glass') && p.mat !== 'grass' && p.mat !== 'glass';
@@ -37,7 +37,7 @@ export default {
     st.heating.delete(p);
     st.burning.set(p, g.time + 7 + rand() * 6);
     g.effects.setFlame(p, 1);
-    g.world.setColor(p, p.baseColor.clone().lerp(HOT[Math.floor(rand() * HOT.length)], 0.6));
+    g.world.setColor(p, p.baseColor.clone().lerp(HOT[Math.floor(rand() * HOT.length)], 0.92));
   },
   update(g, st, dt) {
     st.tick += dt;
@@ -77,7 +77,7 @@ export default {
         if (c.pos.x + 1.4 < b.minX || c.pos.x - 1.4 > b.maxX || c.pos.z + 1.4 < b.minZ || c.pos.z - 1.4 > b.maxZ) continue;
         if (c.pos.y > b.maxY + 1.2 || c.pos.y + 5.5 < b.minY) continue;
         c.fireCd = g.time + 0.9;
-        c.damage(38, 'fire');
+        c.damage(40, 'fire');
         break;
       }
     }
@@ -90,7 +90,6 @@ export default {
   stop(g, st) {
     for (const p of [...g.effects.flameLevels.keys()]) g.effects.setFlame(p, 0);
     st.burning?.clear(); st.heating?.clear();
-    g.audio.loop('fire', false);
     g.hazardPos = null;
   },
 };

@@ -28,6 +28,7 @@ class Game {
       bots: q.has('bots') ? clamp(parseInt(q.get('bots'), 10) || 0, 0, 20) : 9,
       fast: q.has('fast'),
       autostart: q.has('autostart'),
+      welcome: q.has('welcome'),
       solo: q.has('solo') || q.has('map') || q.has('disaster') || q.has('seed'),
       room: (q.get('server') || q.get('room') || 'main').replace(/[^\w-]/g, '').slice(0, 32) || 'main',
       relays: q.get('relay') ? q.get('relay').split(',') : null,
@@ -84,17 +85,17 @@ class Game {
 
     this.round = new RoundManager(this, this.opts);
     this.ui = new UI(this);
-    this.island.drawWeatherMachine(0);
-    // the Weather Machine sells Multi-Disaster through the standard purchase prompt
+    this.island.drawPowerUp(0);
+    // the Power Up Machine sells power-ups through the standard purchase prompt
     this.interactables = [{
-      pos: this.island.weatherMachine, radius: 9, height: 9,
-      object: () => `Weather Machine (${this.round.multi}/7)`,
-      label: 'Add Disaster',
+      pos: this.island.powerUpMachine, radius: 9, height: 11,
+      object: () => `Power Up Machine (Power ${this.round.power()}/7)`,
+      label: 'Power Up',
       action: () => this.ui.openPurchase('multi'),
     }];
     // the item signs on the lobby roof open the purchase prompt, like clicking them in NDS
     for (const sg of this.island.signs) {
-      this.interactables.push({ pos: sg.pos, radius: 7, height: 7, object: sg.title.toLowerCase().replace(/\b\w/g, m => m.toUpperCase()), label: 'Get', action: () => this.ui.openPurchase(sg.kind) });
+      this.interactables.push({ pos: sg.pos, radius: 7, height: 7, object: sg.title, label: 'Click Now!', action: () => this.ui.openPurchase(sg.kind) });
     }
     this.spectating = null;
 
@@ -136,9 +137,8 @@ class Game {
         this.started = true;
         this.player.afk = false;
         this.net?.sendHi();
-        const n = this.chars.filter(c => c.isPlayer || c.remote || this.bots.includes(c)).length;
-        this.ui.system(`Welcome to Natural Disaster Survival! ${n} player${n === 1 ? ' is' : 's are'} on this server.`);
-        this.awardBadge('welcome');
+        // the Welcome screen (skipped by the test/autostart links unless ?welcome is given)
+        if (!this.opts.autostart || this.opts.welcome) this.ui.showWelcome();
       };
       setTimeout(ready, this.opts.autostart ? 0 : 1600);
     };
@@ -446,12 +446,15 @@ class Game {
     }
     if (input.clicked && p.alive) {
       if (p.equipped === 'apple') {
+        // Red Apple: +15 health, then 5.5 s before the next bite
         if ((p.appleCd || 0) < this.time) {
-          p.appleCd = this.time + 5;
-          p.heal(p.maxHealth * 0.15);
+          p.appleCd = this.time + 5.5;
+          p.heal(15);
           p.avatar.swing = 1; p.swings++;
           this.audio.eat();
         }
+      } else if (p.equipped === 'compass') {
+        this.ui.useCompass(true);
       } else if (p.equipped === 'hammer') {
         if ((p.hammerCd || 0) < this.time) {
           const ndc = new THREE.Vector2(input.clickX / innerWidth * 2 - 1, -(input.clickY / innerHeight) * 2 + 1);
@@ -555,8 +558,8 @@ class Game {
     this.island.setWater(this.waterLevel);
     for (const c of this.chars) {
       if (!c.alive || c.remote) continue;
-      if (c.pos.y + 4.6 < this.waterLevel) c.damage(6 * dt, 'drown', true);
-      else if (c.swimming) c.damage(1.5 * dt, 'water', true);
+      // NDS: swimming is safe, only a head under the water drowns (about 10 a second)
+      if (c.pos.y + 4.6 < this.waterLevel) c.damage(10 * dt, 'drown', true);
     }
     if (this.shakeUntil > this.time && this.player.alive && this.island.onIsland(this.player.pos)) this.camController.shake = Math.max(this.camController.shake, this.shakeAmt);
 

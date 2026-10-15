@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { V, charsOnIsland, isHost, locals } from './common.js';
-import { pick, rand } from '../util.js';
+import { V, isHost, locals, inIsland, randomIslandPoint } from './common.js';
+import { rand } from '../util.js';
 
-const LIMIT = 148;     // never enters the brown rim
+const EDGE = 20;       // stays this far inside the edge of the grass
 const N = 900, HEIGHT = 140;
 
 // streaky swirl texture for the funnel walls
@@ -23,18 +23,16 @@ function swirl() {
   return swirlTex;
 }
 
-// A grey-white funnel that wanders the island (often toward players). Everything it
-// touches is torn loose and spun up in a helix; players get thrown into the air.
-// The host steers it; everyone sees it move.
+// A grey-white funnel that wanders the island along a random path of waypoints (it never
+// goes after anyone). Everything it touches is torn loose and spun up in a helix; players
+// get thrown into the air. The host steers it; everyone sees it move.
 export default {
   name: 'Tornado',
-  warning: "Tornado! Stay clear of it's path",
+  warning: 'Tornado! Stay clear of its path!',
   duration: 90,
   bot: 'away-tornado',
-  params(g) {
-    // can spawn right on top of players
-    const near = charsOnIsland(g, false);
-    const c = near.length && rand() < 0.35 ? pick(near).pos : V((rand() - .5) * 160, 0, (rand() - .5) * 160);
+  params() {
+    const c = randomIslandPoint(EDGE + 10);
     return { x: Math.round(c.x), z: Math.round(c.z) };
   },
   preWarn(g) {
@@ -44,7 +42,7 @@ export default {
   start(g, st) {
     st.pos = V(st.p.x ?? 0, 0, st.p.z ?? 0);
     st.target = st.pos.clone();
-    st.wp = this.waypoint(g);
+    st.wp = this.waypoint(g, st.pos);
     st.t = 0;
     const group = new THREE.Group();
     const tex = swirl();
@@ -71,10 +69,15 @@ export default {
     g.hazardPos = st.pos;
     g.audio.loop('tornado', true, { type: 'brown', freq: 380, q: 0.6, gain: 0.5, lfo: 0.5 });
   },
-  waypoint(g) {
-    const live = charsOnIsland(g, false);
-    if (live.length && rand() < 0.4) { const p = pick(live).pos; return V(Math.max(-LIMIT, Math.min(LIMIT, p.x)), 0, Math.max(-LIMIT, Math.min(LIMIT, p.z))); }
-    return V((rand() * 2 - 1) * 120, 0, (rand() * 2 - 1) * 120);
+  // the next point on its random path: somewhere else on the island, not too close
+  waypoint(g, from) {
+    let best = null;
+    for (let i = 0; i < 8; i++) {
+      const p = randomIslandPoint(EDGE);
+      if (!from || p.distanceTo(from) > 50) return p;
+      if (!best || p.distanceTo(from) > best.distanceTo(from)) best = p;
+    }
+    return best;
   },
   radiusAt(y) { return 13 + Math.max(0, y) * 0.22; },
   netState(st) { return [Math.round(st.pos.x * 10) / 10, Math.round(st.pos.z * 10) / 10]; },
@@ -83,10 +86,14 @@ export default {
     st.t += dt;
     if (isHost(g)) {
       const to = st.wp.clone().sub(st.pos); to.y = 0;
-      if (to.length() < 6) st.wp = this.waypoint(g);
-      else st.pos.addScaledVector(to.normalize(), 15 * dt);
-      st.pos.x = Math.max(-LIMIT, Math.min(LIMIT, st.pos.x));
-      st.pos.z = Math.max(-LIMIT, Math.min(LIMIT, st.pos.z));
+      if (to.length() < 6) st.wp = this.waypoint(g, st.pos);
+      else {
+        // steer smoothly toward the waypoint instead of turning on the spot
+        const want = to.normalize();
+        st.heading = st.heading ? st.heading.lerp(want, Math.min(1, dt * 0.8)).normalize() : want;
+        st.pos.addScaledVector(st.heading, 15 * dt);
+      }
+      if (!inIsland(st.pos.x, st.pos.z, EDGE - 6)) st.pos.multiplyScalar(0.995);
     } else st.pos.lerp(st.target, Math.min(1, dt * 4));
     // funnel: spinning layers that sway a little
     st.group.position.set(st.pos.x, 0, st.pos.z);
@@ -149,10 +156,12 @@ export default {
       if (d < 60) g.camController.shake = Math.max(g.camController.shake, 0.25);
     }
   },
-  promote(g, st) { st.wp = this.waypoint(g); },
+  promote(g, st) { st.wp = this.waypoint(g, st.pos); },
   stop(g, st) {
     if (st.points) { g.scene.remove(st.points, st.group); st.points.geometry.dispose(); }
-    g.audio.loop('tornado', false); g.audio.loop('wind', false);
+    // the roar carries on for a moment after the round ends, then dies away
+    if (g.audio.fadeLoop) g.audio.fadeLoop('tornado', 2, 5); else g.audio.loop('tornado', false);
+    g.audio.loop('wind', false);
     g.hazardPos = null;
   },
 };

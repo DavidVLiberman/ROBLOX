@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { rand, ISLAND_HALF } from '../util.js';
+import * as U from '../util.js';
+const { rand } = U;
 
 // How disasters work in multiplayer:
 //  * g.isAuthority (the host) makes every random decision and does everything to bricks;
@@ -49,8 +50,26 @@ export function mapParts(g) {
   return g.map ? g.map.parts.filter(p => p.alive) : [];
 }
 
+// The island's grass (an oval once util.js has ISLAND_RX/ISLAND_RZ, a square before that).
+export const ISL_RX = U.ISLAND_RX ?? U.ISLAND_HALF ?? 160;
+export const ISL_RZ = U.ISLAND_RZ ?? U.ISLAND_HALF ?? 160;
 export function inIsland(x, z, margin = 0) {
-  return Math.abs(x) < ISLAND_HALF - margin && Math.abs(z) < ISLAND_HALF - margin;
+  if (U.insideIsland) return U.insideIsland(x, z, -margin);
+  return Math.abs(x) < ISL_RX - margin && Math.abs(z) < ISL_RZ - margin;
+}
+// A random point on the grass, at least `margin` in from its edge.
+export function randomIslandPoint(margin = 0, rnd = rand) {
+  for (let i = 0; i < 20; i++) {
+    const x = (rnd() * 2 - 1) * (ISL_RX - margin), z = (rnd() * 2 - 1) * (ISL_RZ - margin);
+    if (inIsland(x, z, margin)) return V(x, 0, z);
+  }
+  return V(0, 0, 0);
+}
+// Distance from the island centre to the grass edge along a horizontal direction.
+export function islandEdge(dx, dz) {
+  const l = Math.hypot(dx, dz) || 1;
+  const x = dx / l, z = dz / l;
+  return 1 / Math.sqrt((x / ISL_RX) ** 2 + (z / ISL_RZ) ** 2);
 }
 
 // Simple projectile meshes (meteors, droplets).

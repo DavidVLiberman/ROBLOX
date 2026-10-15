@@ -3,8 +3,32 @@ import { rand } from '../util.js';
 
 const DIRS = [V(1, 0, 0), V(-1, 0, 0), V(0, 0, 1), V(0, 0, -1)];
 
-// "Warmth": walls close by on several sides, a roof, and other players nearby.
+const HEAT_R = 14;   // studs from a fire that keep you warm
+
+// Is there a fire close by? Burning bricks, lava, anything a map tags 'warm', and the
+// Launch Land rocket's engines.
+export function nearFire(g, c) {
+  const P = c.center;
+  const close = (p) => {
+    if (!p.alive) return false;
+    const b = g.world.aabb(p);
+    const dx = Math.max(b.minX - P.x, 0, P.x - b.maxX), dy = Math.max(b.minY - P.y, 0, P.y - b.maxY), dz = Math.max(b.minZ - P.z, 0, P.z - b.maxZ);
+    return dx * dx + dy * dy + dz * dz < HEAT_R * HEAT_R;
+  };
+  for (const p of g.effects.flameLevels.keys()) if (close(p)) return true;
+  for (const p of g.world.partsNear(P, HEAT_R, q => q.tags.has('warm') || q.tags.has('lava'))) if (close(p)) return true;
+  const rocket = g.map?.extras?.rocket;
+  if (rocket) {
+    // the engines are the lowest parts of the rocket
+    rocket.engines ||= rocket.parts.filter(p => p.alive).sort((a, b) => a.body.translation().y - b.body.translation().y).slice(0, 3);
+    for (const p of rocket.engines) if (close(p)) return true;
+  }
+  return false;
+}
+
+// "Warmth": walls close by on several sides, a roof, other players nearby, or a fire.
 export function warmth(g, c) {
+  if (nearFire(g, c)) return 9;
   let walls = 0;
   const o = V(c.pos.x, c.pos.y + 2.5, c.pos.z);
   for (const d of DIRS) if (g.world.raycast(o, d, 7)) walls++;
@@ -15,11 +39,11 @@ export function warmth(g, c) {
 }
 
 // White-out with a strong wind. The more exposed you are, the more the screen frosts
-// over (three stages); only the last stage drains health, so huddle between walls
-// or next to other players. The wind knocks loose small, badly supported bricks.
+// over (three stages); only the last stage drains health, so huddle between walls,
+// next to other players or by a fire. The wind knocks loose small, badly supported bricks.
 export default {
   name: 'Blizzard',
-  warning: 'Blizzard! Seek warmth and find shelter',
+  warning: 'Blizzard! Find shelter and stay warm!',
   duration: 90,
   bot: 'indoor',
   params() { return { a: Math.round(rand() * 6283) / 1000 }; },

@@ -6,8 +6,18 @@ export const WALK_SPEED = 16;
 export const JUMP_POWER = 50;
 export const MAX_HEALTH = 100;
 export const OCEAN_LEVEL = -6;
-export const ISLAND_HALF = 160;         // grass half-size
-export const RIM_HALF = 178;            // outer edge of the brown rim
+// The island is a squished oval of grass (semi-axes ISLAND_RX by ISLAND_RZ) with a
+// dirt edge and rock layers under it. Maps keep their walkable footprint inside
+// insideIsland(x, z, -7), i.e. (x/158)^2 + (z/140)^2 <= 1.
+export const ISLAND_RX = 165;
+export const ISLAND_RZ = 148;
+export function insideIsland(x, z, pad = 0) {
+  const a = x / (ISLAND_RX + pad), b = z / (ISLAND_RZ + pad);
+  return a * a + b * b <= 1;
+}
+// (older square bounds, still used by some code: the oval fits inside them)
+export const ISLAND_HALF = 160;
+export const RIM_HALF = 178;
 
 // Seeded RNG (mulberry32) so maps/disasters can be reproduced from the URL.
 let seed = (Date.now() ^ 0x5f3759df) >>> 0;

@@ -199,7 +199,7 @@ export class Net {
     switch (d.k) {
       case 'sync': this.syncPeer(from); break;
       case 'multi':
-        if (g.round.addMulti()) this.broadcastSystem(`${who?.name || 'Someone'} added a disaster with the Weather Machine! (${g.round.multi}/7)`);
+        if (g.round.addMulti()) this.broadcastSystem(`${who?.name || 'Someone'} powered up the Power Up Machine! (${g.round.powerText()})`);
         break;
       case 'vote': if (who) g.round.vote(d.m, who); break;
       case 'hammer': {
