@@ -471,7 +471,7 @@ export class MapBuilder {
   // [driverSeat, ...passengerSeats]). opts: kind, drivable, maxSpeed (studs/s),
   // accel, turn (steering rate), rail: { pts: [Vector3...], loop } to run on tracks.
   vehicle(x, z, rotY, opts, build) {
-    const { kind = 'car', drivable = true, maxSpeed = 70, accel = 34, turn = 1, rail = null, tags: extraTags = [] } = opts || {};
+    const { kind = 'car', drivable = true, maxSpeed = 70, accel = 34, turn = 1, rail = null, length = 10, tags: extraTags = [] } = opts || {};
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rotY * DEG, 0));
     const parts = [];
     const add = (lx, ly, lz, sx, sy, sz, col, mat, shape = 'box', extraRot = null, tags = []) => {
@@ -484,7 +484,7 @@ export class MapBuilder {
     };
     let seats = build(add);
     seats = Array.isArray(seats) ? seats : [seats];
-    const veh = { parts, seat: seats[0], passengers: seats.slice(1), pos: V(x, 0, z), yaw: rotY * DEG, speed: 0, drivable, kind, maxSpeed, accel, turn, rail: rail ? { pts: rail.pts.map(p => p.clone()), loop: !!rail.loop } : null };
+    const veh = { parts, seat: seats[0], passengers: seats.slice(1), pos: V(x, 0, z), yaw: rotY * DEG, speed: 0, drivable, kind, maxSpeed, accel, turn, length, rail: rail ? { pts: rail.pts.map(p => p.clone()), loop: !!rail.loop, id: rail.id ?? 'track' } : null };
     seats[0].vehicle = veh;
     for (const s of veh.passengers) s.passengerOf = veh;
     this.vehicles.push(veh);

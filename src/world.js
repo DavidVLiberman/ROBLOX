@@ -300,6 +300,8 @@ export class World {
       if (part.tags.has('indestructible')) return false;
       part.anchored = false;
       part.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
+      // small bricks fall fast enough to slip through a floor in one step
+      if (Math.min(part.size.x, part.size.y, part.size.z) < 3) part.body.enableCcd(true);
       part.unanchoredAt = this.time;
       this.dynamic.add(part);
       this.supportDirty = true;

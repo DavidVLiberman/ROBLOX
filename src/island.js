@@ -92,6 +92,17 @@ export class Island {
       .setCollisionGroups(IG_PART).setSolverGroups(IG_PART);
     part.collider = w.physics.createCollider(cd, part.body);
     w.byCollider.set(part.collider.handle, part);
+    // plus boxes filling most of the oval: Rapier's box contacts are exact, while loose
+    // bricks resting on just the big hull sink a third of a stud into it
+    const strips = 16;
+    for (let i = 0; i < strips; i++) {
+      const z0 = -rz + 2 * rz * i / strips, z1 = z0 + 2 * rz / strips;
+      const hw = rx * Math.sqrt(Math.max(0, 1 - (Math.max(Math.abs(z0), Math.abs(z1)) / rz) ** 2));
+      if (hw < 1) continue;
+      const bd = RAPIER.ColliderDesc.cuboid(hw, h / 2, (z1 - z0) / 2).setTranslation(0, 0, (z0 + z1) / 2).setFriction(0.6).setRestitution(0.1)
+        .setCollisionGroups(IG_PART).setSolverGroups(IG_PART);
+      w.byCollider.set(w.physics.createCollider(bd, part.body).handle, part);
+    }
     part.pool.set(part.inst, ZERO);
     const geo = slabGeometry(inner && [Math.max(0, inner[0] - 0.5) / rx, Math.max(0, inner[1] - 0.5) / rz]);
     const mesh = new THREE.InstancedMesh(geo, getMaterial(mat), 1);

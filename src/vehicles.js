@@ -57,7 +57,16 @@ export function stepVehicles(game, dt) {
       }
       v.moving = true;
       if (v.rail) {
-        // trains and handcars: follow the track, steering does nothing
+        // trains and handcars: follow the track, steering does nothing, and stop short
+        // of anything else on the same track
+        const fx = Math.sin(v.yaw) * Math.sign(v.speed), fz = Math.cos(v.yaw) * Math.sign(v.speed);
+        for (const o of game.vehicles) {
+          if (o === v || o.broken || !o.rail || o.rail.id !== v.rail.id) continue;
+          const dx = o.pos.x - v.pos.x, dz = o.pos.z - v.pos.z;
+          if (Math.hypot(dx, dz) < (v.length + o.length) / 2 + 1.5 && dx * fx + dz * fz > 0) {
+            v.speed = 0; sendState(game, v, vi, true); return;
+          }
+        }
         const at = railStep(v, v.speed * dt);
         if (!at) { v.speed = 0; sendState(game, v, vi, true); return; }
         v.pos.set(at.x, 0, at.z); v.yaw = at.yaw;
