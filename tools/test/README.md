@@ -13,3 +13,4 @@ path in `common.mjs` / `round.mjs` if yours lives elsewhere.
 - `node launch.mjs [0|1]` – Launch Land's four buttons, countdown and a good (0) or failed (1) launch.
 - `node round.mjs "Map" "Disaster" [seconds]` – a real fast round with bots; reports page errors.
 - `node train.mjs` – drives the Devastation Station loco round the loop, dumps the coal hopper and lowers the crossing gates.
+- `node drive.mjs "Map" [vehicle] [seconds] [keys]` – sit in a vehicle and hold keys (e.g. `w` or `w,a`).
