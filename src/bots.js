@@ -277,7 +277,29 @@ export class BotBrain {
     // line up properly at the foot of stairs/ladders; climbers have to actually
     // reach the top before moving on
     const foot = !last && this.path[this.idx + 1].y - wp.y > 3;
-    if (hd < (last ? 1.5 : foot ? 1.4 : 2.2) && Math.abs(dy) < (c.climbing ? 0.8 : 3.5)) { this.idx++; this.progressT = 0; this.bestDist = Infinity; this.stuckCount = 0; return this.idx >= this.path.length ? 'arrived' : 'moving'; }
+    // sharp turns up in a building are taken tightly (cutting the corner can mean
+    // walking into the stairwell you just came up)
+    let sharp = false;
+    if (!last && !foot && wp.y > 3 && !c.climbing && Math.abs(dy) < 1.5) {
+      const nx = this.path[this.idx + 1].x - wp.x, nz = this.path[this.idx + 1].z - wp.z;
+      const nl = Math.hypot(nx, nz);
+      sharp = nl > 0.5 && hd > 0.01 && (dx * nx + dz * nz) / (hd * nl) < 0.6;
+    }
+    // getting off a truss partway up (onto a floor round the hatch): climb a bit past
+    // the floor, then kick off it toward the floor
+    if (c.climbing && !last && hd < 3.6) {
+      const nx = this.path[this.idx + 1], tb = g.world.aabb(c.climbing);
+      if (Math.abs(nx.y - wp.y) < 1 && wp.y < tb.maxY - 1.5) {
+        if (dy < -1.3) { this.idx++; c.jump = true; this.progressT = 0; this.bestDist = Infinity; this.stuckCount = 0; }
+        else {
+          const tx = (tb.minX + tb.maxX) / 2 - c.pos.x, tz = (tb.minZ + tb.maxZ) / 2 - c.pos.z, tl = Math.hypot(tx, tz) || 1;
+          c.move.set(tx / tl * 0.7, 0, tz / tl * 0.7);
+        }
+        return 'moving';
+      }
+    }
+    // (someone on a truss hangs off its side, up to ~3 studs from its middle)
+    if (hd < (c.climbing ? 3.6 : last ? 1.5 : foot ? 1.4 : sharp ? 1.1 : 2.2) && Math.abs(dy) < (c.climbing ? 0.8 : 3.5)) { this.idx++; this.progressT = 0; this.bestDist = Infinity; this.stuckCount = 0; return this.idx >= this.path.length ? 'arrived' : 'moving'; }
     let mx = hd > 0.01 ? dx / hd : 0, mz = hd > 0.01 ? dz / hd : 0;
     // keep pushing into a truss when the waypoint is above us
     if (hd < 2.3 && dy > 1.5) {
@@ -307,7 +329,16 @@ export class BotBrain {
     // don't walk off a roof by accident (unless the waypoint is down there)
     if (c.grounded && c.pos.y > 6 && dy > -3) {
       const ahead = g.world.raycast(V(c.pos.x + mx * 2, c.pos.y + 1, c.pos.z + mz * 2), V(0, -1, 0), 7);
-      if (!ahead) { mx *= -0.3; mz *= -0.3; this.stuckCount++; }
+      if (!ahead) {
+        // a short gap (a hatch, between roofs) with floor at this height just beyond: jump it
+        let far = null;
+        for (const r of [4, 5.5]) {
+          const h = r < hd + 1.5 ? g.world.raycast(V(c.pos.x + mx * r, c.pos.y + 1.5, c.pos.z + mz * r), V(0, -1, 0), 3) : null;
+          if (h && Math.abs(h.point.y - c.pos.y) < 1.2) { far = h; break; }
+        }
+        if (far) c.jump = true;
+        else { mx *= -0.3; mz *= -0.3; this.stuckCount++; }
+      }
     }
     c.move.set(mx, 0, mz);
     // hop over things the step-up can't handle (fences, low walls)
@@ -315,7 +346,12 @@ export class BotBrain {
       const fwd = V(mx, 0, mz);
       const low = g.world.raycast(V(c.pos.x, c.pos.y + 0.8, c.pos.z), fwd, 2.2);
       const high = g.world.raycast(V(c.pos.x, c.pos.y + 4.5, c.pos.z), fwd, 2.4);
-      if (low && !high && !low.object?.tags?.has('truss') && Math.abs(low.normal.y) < 0.5) c.jump = true;
+      if (low && !high && !low.object?.tags?.has('truss') && Math.abs(low.normal.y) < 0.5) {
+        // only when there's floor at about this height on the other side (not over a
+        // railing into an atrium or off a balcony)
+        const land = g.world.raycast(V(c.pos.x + mx * 3.4, c.pos.y + 6, c.pos.z + mz * 3.4), V(0, -1, 0), 12);
+        if (land && land.point.y > c.pos.y - 3 || dy < -3) c.jump = true;
+      }
     }
     // stuck? jump, then try another way round, then give up on this waypoint
     const d = hd + Math.abs(dy) * 0.5;

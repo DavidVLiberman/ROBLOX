@@ -138,6 +138,7 @@ export class MapBuilder {
       roofAccess = true, parapet = true, t = 1, stairColor = null, interior = null, noStairs = false, trim = null,
       y: by = 0, stairFire = false, groundTile = true, ladder = null, ladderSide = 'E', roofDetails = true, furnish = null,
       extraHoles = [],   // [{ level, x0, x1, z0, z1 }]: atriums, roof hatches (level = floors is the roof)
+      walls = true,      // false: an open frame (launch towers, scaffolds) -- floors, stairs and corner posts
     } = o;
     const trimColor = o.windowTrim ?? (trim ?? BC.institutionalWhite);
     const x0 = x - w / 2, x1 = x + w / 2, z0 = z - d / 2, z1 = z + d / 2;
@@ -148,6 +149,11 @@ export class MapBuilder {
     const useStairs = !noStairs && flights > 0 && (ix1 - ix0) >= N * run + 7 && (iz1 - iz0) >= sw * 2 + 4;
     const useTruss = !noStairs && flights > 0 && !useStairs;
     const flip = door === 'N';
+    // truss hatch in the corner, the ladder against the walls (an open frame gets a
+    // solid shaft panel there instead, so climbers can't swing round to the outside)
+    const hs = 6, hx0 = ix0, hz0 = iz0, tx = ix0 + 1.5, tz = iz0 + 1.5;
+    const tFoot = V(ix0 + 4.5, by, iz0 + 4.5);
+    const tOff = (y) => V(ix0 + 8, y, iz0 + 3.5);
     const sgn = flip ? -1 : 1;
     const holes = {};  // level -> [rects]
     const flightInfo = [];
@@ -163,7 +169,7 @@ export class MapBuilder {
         (holes[k + 1] ||= []).push({ x0: Math.min(xs, xe) - 0.2, x1: Math.max(xs, xe), z0: bz0, z1: bz1 });
       }
     } else if (useTruss) {
-      for (let k = 1; k <= flights; k++) (holes[k] ||= []).push({ x0: ix0, x1: ix0 + 6, z0: iz0, z1: iz0 + 6 });
+      for (let k = 1; k <= flights; k++) (holes[k] ||= []).push({ x0: hx0, x1: hx0 + hs, z0: hz0, z1: hz0 + hs });
     }
     for (const h of extraHoles) (holes[h.level] ||= []).push(h);
     const levelY = (k) => by + k * fh;
@@ -190,6 +196,15 @@ export class MapBuilder {
         const list = door === 'N' ? nOpen : sOpen;
         for (let i = list.length - 1; i >= 0; i--) if (list[i].b > doorOp.a - 0.5 && list[i].a < doorOp.b + 0.5) list.splice(i, 1);
         list.push(doorOp);
+      }
+      if (!walls) {
+        // open frame: a post at each corner and a beam round the edge of the floor
+        for (const [px, pz] of [[x0, z0], [x1, z0], [x0, z1], [x1, z1]]) this.box(px - 0.6, y0, pz - 0.6, px + 0.6, y0 + fh, pz + 0.6, color, mat);
+        if (k > 0) {
+          this.box(x0, y0 - 1.4, z0 - 0.3, x1, y0 - 0.4, z0 + 0.3, color, mat);
+          this.box(x0, y0 - 1.4, z1 - 0.3, x1, y0 - 0.4, z1 + 0.3, color, mat);
+        }
+        continue;
       }
       this.wallX(z1 - t / 2, x0, x1, wy, wh, t, color, mat, sOpen, glassColor, trimColor);
       this.wallX(z0 + t / 2, x0, x1, wy, wh, t, color, mat, nOpen, glassColor, trimColor);
@@ -225,7 +240,11 @@ export class MapBuilder {
     }
     let trussPart = null;
     if (useTruss) {
-      trussPart = this.truss(ix0 + 1.5, by, iz0 + 1.5, levelY(flights) + 0.4 - by);
+      trussPart = this.truss(tx, by, tz, levelY(flights) + 0.4 - by);
+      if (!walls) {
+        this.box(x0, by, z0, ix0, top, iz0 + hs + 0.5, color, mat);
+        this.box(ix0, by, z0, ix0 + hs + 0.5, top, iz0, color, mat);
+      }
     }
     // roof
     if (roof === 'flat') {
@@ -313,9 +332,9 @@ export class MapBuilder {
       if (k > 0) {
         if (useStairs) climbFlight(path, flightInfo[k - 1]);
         else if (useTruss) {
-          if (k === 1) path.push(V(ix0 + 4.5, by, iz0 + 4.5));
-          path.push(V(ix0 + 1.5, levelY(k), iz0 + 1.5));
-          path.push(V(ix0 + 8, levelY(k), iz0 + 3.5));
+          // straight up the ladder from the ground to this floor
+          path.length = 2;
+          path.push(tFoot.clone(), V(tx, levelY(k), tz), tOff(levelY(k)));
         } else break;
       }
       this.spot('indoor', ...center(k).toArray(), [...path, center(k)]);
@@ -326,16 +345,15 @@ export class MapBuilder {
       const p = [...path];
       if (useStairs) climbFlight(p, flightInfo[floors - 1]);
       else {
-        if (floors === 1) p.push(V(ix0 + 4.5, by, iz0 + 4.5));
-        p.push(V(ix0 + 1.5, top, iz0 + 1.5));
-        p.push(V(ix0 + 8, top, iz0 + 3.5));
+        p.length = 2;
+        p.push(tFoot.clone(), V(tx, top, tz), tOff(top));
       }
       const rc = V(x + (rand() - .5) * w * 0.4, top, z + (rand() - .5) * d * 0.3);
       p.push(rc);
       this.spot('high', rc.x, rc.y, rc.z, p);
     }
     this.heights.push(roof === 'gable' ? top + (d / 2) * Math.tan(32 * DEG) : top + (roof === 'flat' && parapet ? 2 : 0));
-    const info = { x0, x1, z0, z1, ix0, ix1, iz0, iz1, levelY, floors, fh, top, doorOut, doorIn, path, flightInfo, holes, ladder: ladderInfo };
+    const info = { x, z, x0, x1, z0, z1, ix0, ix1, iz0, iz1, levelY, floors, fh, top, doorOut, doorIn, path, flightInfo, holes, ladder: ladderInfo };
     if (interior) interior(this, info);
     if (furnish ?? !interior) this.furnish(info, floorColor);
     return info;

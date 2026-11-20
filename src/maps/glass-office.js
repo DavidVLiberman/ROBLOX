@@ -38,7 +38,7 @@ export default {
         if (prev && q.y > 1 && Math.abs(prev.y - q.y) < 1 && q.y < info.levelY(F - 1) - 1) {
           // does the straight walk cross the atrium?
           let cross = false;
-          for (let t = 0.05; t < 1; t += 0.05) if (inAtr({ x: prev.x + (q.x - prev.x) * t, z: prev.z + (q.z - prev.z) * t }, 1.5)) cross = true;
+          for (let t = 0.05; t < 1; t += 0.05) if (inAtr({ x: prev.x + (q.x - prev.x) * t, z: prev.z + (q.z - prev.z) * t }, 2.5)) cross = true;
           if (cross) {
             // step off the stair band first (its stairwell is open below), then go
             // along the side wing and on to the spot
@@ -64,7 +64,7 @@ export default {
     // desks in the wings round the atrium
     for (let k = 0; k < F; k++) {
       const y = info.levelY(k);
-      for (const [x, z] of [[-27, -14], [-27, -2], [27, -14], [27, -2], [-8, -28], [8, -28]]) {
+      for (const [x, z] of [[-27, -14], [-27, -2], [27, -14], [27, -2]]) {
         b.table(x, y, z, 5, 3, BC.brown);
         b.chair(x, y, z + 2.6, 180, BC.black);
       }
@@ -74,7 +74,9 @@ export default {
     // a truss on the 7th floor up through the roof hatch
     const tx = (hatch.x0 + hatch.x1) / 2, tz = (hatch.z0 + hatch.z1) / 2, y7 = info.levelY(F - 1);
     b.truss(tx, y7, tz, info.top - y7 + 0.4);
-    b.spot('high', tx - 6, info.top, tz + 8, [...info.path, V(tx, y7, tz + 3), V(tx, info.top + 0.2, tz), V(tx - 6, info.top, tz + 8)]);
+    // (climbers come up facing north, so they step off on the north side of the hatch)
+    const zn = hatch.z0 - 2.5;
+    b.spot('high', tx - 6, info.top, zn - 3, [...info.path, V(tx, y7, tz + 3), V(tx, info.top + 0.2, tz), V(tx, info.top, zn), V(tx - 6, info.top, zn - 3)]);
 
     // pavement, road and bushes along the front
     b.box(-60, 0, z1, 60, 0.3, z1 + 14, BC.mediumStone, 'concrete');
