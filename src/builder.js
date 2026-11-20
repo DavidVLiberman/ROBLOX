@@ -315,6 +315,7 @@ export class MapBuilder {
       this.spot('high', ladderInfo.roof.x, ladderInfo.roof.y, ladderInfo.roof.z, [ladderInfo.base, ladderInfo.top, V(ex - sx * 1.5, ladderInfo.top.y - 0.5, lz), ladderInfo.roof]);
     }
     // ---- bot paths & spots ----
+    const firstSpot = this.spots.length;
     const dX = x + doorX;
     const doorOut = V(dX, by, door === 'N' ? z0 - 4 : z1 + 4);
     const doorIn = V(dX, by, door === 'N' ? z0 + 4 : z1 - 4);
@@ -354,7 +355,27 @@ export class MapBuilder {
     }
     this.heights.push(roof === 'gable' ? top + (d / 2) * Math.tan(32 * DEG) : top + (roof === 'flat' && parapet ? 2 : 0));
     const info = { x, z, x0, x1, z0, z1, ix0, ix1, iz0, iz1, levelY, floors, fh, top, doorOut, doorIn, path, flightInfo, holes, ladder: ladderInfo };
-    if (interior) interior(this, info);
+    if (interior) {
+      const firstPart = this.parts.length;
+      interior(this, info);
+      // keep this building's spots out of the furniture the interior just added
+      const props = this.parts.slice(firstPart).filter(p => p.collide).map(p => this.world.aabb(p));
+      const blocked = (q) => props.some(a => q.x > a.minX - 1.2 && q.x < a.maxX + 1.2 && q.z > a.minZ - 1.2 && q.z < a.maxZ + 1.2 && a.maxY > q.y + 0.4 && a.minY < q.y + 4.5);
+      for (let i = firstSpot; i < this.spots.length; i++) {
+        const sp = this.spots[i], end = sp.path[sp.path.length - 1];
+        if (!blocked(sp.pos)) continue;
+        const was = sp.pos.clone();
+        search: for (let r = 2; r <= 14; r += 2) {
+          for (let a = 0; a < 8; a++) {
+            const q = V(was.x + Math.cos(a * Math.PI / 4) * r, was.y, was.z + Math.sin(a * Math.PI / 4) * r);
+            if (q.x < ix0 + 1.5 || q.x > ix1 - 1.5 || q.z < iz0 + 1.5 || q.z > iz1 - 1.5 || blocked(q)) continue;
+            sp.pos.copy(q);
+            break search;
+          }
+        }
+        if (end && end.distanceTo(was) < 0.01) end.copy(sp.pos);
+      }
+    }
     if (furnish ?? !interior) this.furnish(info, floorColor);
     return info;
   }

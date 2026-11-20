@@ -289,8 +289,9 @@ export class BotBrain {
     // the floor, then kick off it toward the floor
     if (c.climbing && !last && hd < 3.6) {
       const nx = this.path[this.idx + 1], tb = g.world.aabb(c.climbing);
-      if (Math.abs(nx.y - wp.y) < 1 && wp.y < tb.maxY - 1.5) {
-        if (dy < -1.3) { this.idx++; c.jump = true; this.progressT = 0; this.bestDist = Infinity; this.stuckCount = 0; }
+      if (Math.abs(nx.y - wp.y) < 1) {
+        // (at the top of the truss: keep climbing until it pulls us up over the edge)
+        if (wp.y < tb.maxY - 1.5 && dy < -1.3) { this.idx++; c.jump = true; this.progressT = 0; this.bestDist = Infinity; this.stuckCount = 0; }
         else {
           const tx = (tb.minX + tb.maxX) / 2 - c.pos.x, tz = (tb.minZ + tb.maxZ) / 2 - c.pos.z, tl = Math.hypot(tx, tz) || 1;
           c.move.set(tx / tl * 0.7, 0, tz / tl * 0.7);

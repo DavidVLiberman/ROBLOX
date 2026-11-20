@@ -19,6 +19,11 @@ const stats = await page.evaluate(() => {
     if (!p.anchored || b.minY < 0.6 || p.tags.has('float')) continue;
     if (!boxes.some(o => o.p !== p && touch(b, o.b))) floating.push([p.position.x, p.position.y, p.position.z].map(v => v.toFixed(1)).join(','));
   }
+  // anchored parts the support graph can't connect to the ground (they'd fall at the first collapse)
+  const seen = new Set(), queue = m.parts.filter(p => p.anchored && p.root);
+  queue.forEach(p => seen.add(p));
+  while (queue.length) for (const n of queue.pop().neighbors || []) if (!seen.has(n) && n.anchored) { seen.add(n); queue.push(n); }
+  const unsupported = m.parts.filter(p => p.anchored && !seen.has(p) && !p.tags.has('float') && !p.vehicle);
   const spots = {};
   for (const s of m.spots) spots[s.type] = (spots[s.type] || 0) + 1;
   const blocked = m.spawns.filter(s => w.overlapsCapsule(s.x, s.y + 3.3, s.z, 1.5, 1)).length;
@@ -31,6 +36,7 @@ const stats = await page.evaluate(() => {
   return {
     parts: m.parts.length,
     floating: floating.length, floatingAt: floating.slice(0, 8),
+    unsupported: unsupported.length, unsupportedAt: unsupported.slice(0, 6).map(p => p.position.toArray().map(v => v.toFixed(0)).join(',')),
     fire: m.parts.filter(p => p.tags.has('fire')).map(p => p.position.toArray().map(v => v.toFixed(0)).join(',')),
     spots, spawns: m.spawns.length, blockedSpawns: blocked,
     seats: m.seats.length, vehicles: m.vehicles.length, interact: m.interact.length,

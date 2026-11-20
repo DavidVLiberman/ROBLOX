@@ -58,9 +58,9 @@ export default {
         for (const x of [-56, -46, -36]) b.bench(x, 6, 0, WOOD);
       },
     });
-    b.part({ pos: [-45, st.top - 5, st.z1 + 0.6], size: [5, 0.4, 5], color: BC.white, mat: 'plastic', shape: 'cyl', rot: [90, 0, 0] });
-    b.block(-45, st.top - 5.2, st.z1 + 0.85, 0.3, 2, 0.1, BC.black, 'plastic');
-    b.part({ pos: [-44.4, st.top - 4.6, st.z1 + 0.9], size: [0.3, 1.5, 0.1], color: BC.black, mat: 'plastic', rot: [0, 0, -60] });
+    b.part({ pos: [-45, st.top - 5, st.z1 + 0.2], size: [5, 0.4, 5], color: BC.white, mat: 'plastic', shape: 'cyl', rot: [90, 0, 0] });
+    b.block(-45, st.top - 5.2, st.z1 + 0.45, 0.3, 2, 0.1, BC.black, 'plastic');
+    b.part({ pos: [-44.4, st.top - 4.6, st.z1 + 0.45], size: [0.3, 1.5, 0.1], color: BC.black, mat: 'plastic', rot: [0, 0, -60] });
     b.box(-82, 0, 18, -8, 1.6, 25.2, BC.mediumStone, 'concrete');
     b.box(-82, 1.6, 24.4, -8, 1.65, 25.2, BC.brightYellow, 'plastic');
     for (let x = -78; x <= -12; x += 11) b.block(x, 1.6, 19.6, 0.8, 9.4, 0.8, 0x2f5d3a, 'metal');

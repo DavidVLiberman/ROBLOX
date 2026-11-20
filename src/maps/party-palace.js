@@ -91,8 +91,8 @@ export default {
       b.part({ pos: [P.x + 14.5, P.y - 15, P.z], size: [10.4, 6, 5], color: WOOD, mat: 'wood', shape: 'wedge', rot: [0, -90, 0] });
       b.part({ pos: [P.x - 14.5, P.y - 15, P.z], size: [10.4, 6, 5], color: WOOD, mat: 'wood', shape: 'wedge', rot: [0, 90, 0] });
       R(16.4, -12, -0.7, 17.6, -6.5, 0.7, 0x2f8a3c, 'plastic');
-      b.ball(P.x + 17.4, P.y - 5.8, P.z, 2.8, 0x2f8a3c, 'plastic');
-      R(17.8, -6.6, -0.6, 20, -5.4, 0.6, 0x2f8a3c, 'plastic');
+      b.ball(P.x + 17.4, P.y - 6.7, P.z, 2.8, 0x2f8a3c, 'plastic');
+      R(17.8, -6.2, -0.6, 20, -5, 0.6, 0x2f8a3c, 'plastic');
       R(-17.6, -12, -0.6, -16.4, -7, 0.6, 0x2f8a3c, 'plastic');
       for (const x of [-8, -4, 0, 4, 8]) for (const z of [-2.4, 2.4]) R(x - 1, -17, z - 1, x + 1, -16.4, z + 1, BC.brightRed, 'fabric', { tags: ['seat'] });
     });
