@@ -43,3 +43,38 @@ export function desks(b, info, color = BC.brown) {
     }
   }
 }
+
+// A group of anchored parts moved together as one rigid body around `origin` (rides,
+// cranes, swinging arms). set(pos, quat) places the group's origin and turns it; only
+// the host moves bricks (everyone else follows the host), and lastDelta lets people
+// standing on a piece ride along.
+export function rig(game, parts, origin) {
+  const items = parts.map((p) => {
+    const t = p.body.translation(), r = p.body.rotation();
+    return { p, lp: new THREE.Vector3(t.x - origin.x, t.y - origin.y, t.z - origin.z), lq: new THREE.Quaternion(r.x, r.y, r.z, r.w) };
+  });
+  const v = new THREE.Vector3(), q = new THREE.Quaternion();
+  return {
+    parts,
+    set(pos, quat) {
+      if (!game.isAuthority) return;
+      for (const it of items) {
+        const p = it.p;
+        if (!p.alive || !p.anchored) continue;
+        v.copy(it.lp).applyQuaternion(quat).add(pos);
+        q.copy(quat).multiply(it.lq);
+        const t = p.body.translation();
+        p.lastDelta = { x: v.x - t.x, y: v.y - t.y, z: v.z - t.z };
+        game.world.movePart(p, v, q);
+        p._moved = true;
+      }
+    },
+  };
+}
+
+// collects every part the builder makes while fn runs
+export function collect(b, fn) {
+  const n = b.parts.length;
+  fn();
+  return b.parts.slice(n);
+}
