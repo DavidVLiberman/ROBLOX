@@ -15,3 +15,4 @@ path in `common.mjs` / `round.mjs` if yours lives elsewhere.
 - `node train.mjs` – drives the Devastation Station loco round the loop, dumps the coal hopper and lowers the crossing gates.
 - `node drive.mjs "Map" [vehicle] [seconds] [keys]` – sit in a vehicle and hold keys (e.g. `w` or `w,a`).
 - `node ride.mjs "Map" <seat> [seconds]` – sit in a seat and check the ride carries you.
+- `node heli.mjs` – Fort Indestructible: the pilot spins the rotor up and its blades kill someone on the roof.
