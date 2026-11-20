@@ -62,17 +62,43 @@ can't mix old and new files, and an open copy of the old page reloads itself onc
 | Avatar | R6-style Noob with the classic Smile face; walk 16, jump power 50, 100 HP, Roblox gravity 196.2. Walk/jump/fall/climb/swim/sit animations and the R6 chat emotes (/e dance, dance2, dance3, wave, point, cheer, laugh). Falls apart into six pieces on death. |
 | Climbing | Truss climbing like a Roblox Humanoid: walk into a truss to grab it, forward climbs at 11.2 studs/s (70% of WalkSpeed), back climbs down, no input hangs on, sideways shuffles, Space kicks off backwards, and you pull yourself up over the top. |
 | Movement | Fixed 60 Hz physics with smoothed (interpolated) rendering, 1.6-stud step-up that walks straight up stairs and kerbs (and back down them), a short jump grace period after walking off a ledge, ground snapping on slopes and stairs, and players gently pushing apart instead of getting stuck on each other. Building staircases are solid and kept clear of furniture, and nobody spawns inside a car or a wall. Keys are tracked by their physical position, so a key always lets go (Shift/Option/Cmd can't leave W held down), the name box doesn't keep the keyboard after Play, and a character wedged inside a brick (debris landing on it) pops out to the nearest free spot. |
-| Maps (23) | Arch Park, Coastal Quickstop, Devastation Station, Factory Frenzy, Fort Indestructible, Furious Station, Glass Office, Happy Home, Heights School, Launch Land, Lucky Mart, Manic Mansion, Modest Headquarters, Party Palace, Prison Panic, Rainbow Ride, Rakish Refinery, Raving Raceway, Safety Second, Sky Tower, Sunny Ranch, Surf Central, Trailer Park — each with its fixed fire start, stairs, seats, drivable cars, and a launchable rocket on Launch Land. Every map has truss ladders up to high ground (roofs, towers, chimneys, silos, the crane, the stage); on Launch Land you can climb the launch tower and walk across onto a walkway around the rocket and ride it up. Buildings have window sills and headers, door frames, roof coping and ridge caps, AC units, porch lights, furniture inside, and the maps have signs, bushes, trees and street lamps. |
+| Maps (23) | All 23 maps, rebuilt to match the real ones (see **Maps** below): bigger, on the oval island, each with its fixed fire start, walkable stairs, seats, ladders up to high ground, everyone arriving at the entrance, and drivable vehicles only where the real game has them. Rides and machines really move (the host drives them, so riders and everyone else see the same thing), and map buttons pressed by any player run for everyone. |
 | Disasters (13) | Flash Flood (rises, then surges around its peak), Tsunami (bright blue curling wave that shrinks as it comes ashore, then a smaller second wave), Meteor Shower (about two a second at random angles, punching through a floor or two), Thunder Storm (45 yellow branching bolts, near misses burn and throw you), Volcanic Eruption (a dark basalt cone rises out of the sea next to the island with lava running down its sides, erupts 15 s later and throws blocks of molten rock — glowing cracks in a dark crust, slowly creeping — that dim as they cool and set into obsidian), Blizzard (three frost stages, only the last one hurts; walls and other players keep you warm), Avalanche (mountain rises before the warning, snow chunks tumble down), Acid Rain (bricks go grey, green, dark green, black, then dissolve; green bricks break loose and burn on touch), Tornado (layered swirling funnel with a cloud cap and orbiting debris), Earthquake (cracks open in the ground), Sandstorm (a rolling sand front; only flying bricks hurt), Fire (bricks heat up with small flames before catching, burn yellow/orange/red, then char black; never spreads to grass), Deadly Virus (purple droplets, no cure) — exact warning strings, and the same weather hints before the warning as the real game. |
 | Destruction | Every brick is anchored at round start. Disasters unanchor, push, corrode, burn or delete parts; a weld graph makes anything no longer connected to the ground collapse. Fast debris deals damage by speed and size. |
 | Multi-Disaster | Weather Machine (E in the lobby, or the shop) stacks up to 7 extra disasters; warnings stack on screen. |
 | Items | Green Balloon, Red Apple, Yellow Compass, Blue Hammer (12/day) — all free here. |
 | Progression | Survivals + streak saved in `localStorage`; all badges from the spec (milestones, streaks, Close Call, Chance, map/disaster combos, Rocket Escape, Multi-Disaster 2–7). |
-| Players | Real players over peer-to-peer multiplayer (see above), plus simulated players (bots) that wander the lobby, explore, pick a spot depending on the warning (high ground, indoors, open ground, away from the hazard), chat, and answer when people talk to them. Bots find their way with A* over a walk grid of the island (round walls, through doors and gates, up hill steps), then take the stairs and truss ladders floor by floor; if they get stuck they remember the spot and plan another way round. They dodge meteors and lava, use the Red Apple and Green Balloon, and climb higher when the water rises. In tests they reach 178 of the 180 hiding spots across the 23 maps. |
+| Players | Real players over peer-to-peer multiplayer (see above), plus simulated players (bots) that wander the lobby, explore, pick a spot depending on the warning (high ground, indoors, open ground, away from the hazard), chat, and answer when people talk to them. Bots find their way with A* over a walk grid of the island (round walls, through doors and gates, up hill steps), then take the stairs and truss ladders floor by floor; if they get stuck they remember the spot and plan another way round. They dodge meteors and lava, use the Red Apple and Green Balloon, and climb higher when the water rises. In tests (`tools/test/navall.sh`) they reach all 329 hiding spots across the 23 maps. |
 | Chat | Shared server chat with Roblox name colours and bubble chat (3 stacked bubbles, 30 s, shrinks to "⋯" beyond 40 studs, hidden beyond 100), a "..." typing indicator, Roblox-style `#` filtering of swear words, phone numbers, e-mails and links, "joined/left the game" messages, and the TextChatService commands: `/e`, `/w name`, `/m name`, `/um name`, `/cls`, `/help`, `/v`. |
 | Roblox interface | Recreated in HTML/CSS (no copied Roblox image files): top bar (Roblox menu button + ≡ menu with Leaderboard / Backpack / Capture / Report, chat toggle), chat window + bubble chat with Roblox name colours, player list with a Survivals column (Tab), backpack hotbar + inventory with Search (` key) where tools show their names like icon-less Roblox tools, ProximityPrompts, Roblox-style notifications ("Badge Awarded"), the "Buy Item" purchase prompt, and the Esc menu with People / Settings / Report / Help tabs plus Reset Character [R], Leave [L], Resume [Esc]. Mobile thumbstick + jump button. |
 | Game GUI | Status bar, disaster warning, health bar, survivors list, Compass map vote, item buttons. |
 | Sound | All synthesized with WebAudio (rain, wind, thunder, rumble, water roar, explosions, coughs, chime). Disaster sounds go through their own quieter effects channel (about a third of the interface volume) with a compressor, so explosions and thunder never blast. |
+
+## Maps
+
+- **Arch Park** — hedged park, fountain plaza (fire: the bin), a stone arch you can climb whose top stays just under the flood line, pavilion, restrooms, duck pond with footbridge, statue.
+- **Coastal Quickstop** — brown two-storey house (fire: fireplace), the Quickstop shop and pumps, beach, dock over the sea with a rowboat, lighthouse with a turning lamp. No cars.
+- **Devastation Station** — railway loop running out over the sea on a trestle, drivable saddle-tank loco and two handcars, level crossing with gates you lower and raise, coal hopper that dumps its coal (fire), water tower, station and platform.
+- **Factory Frenzy** — factory with a running conveyor and press (fire: 2nd-floor lights), two chimneys, container port with a turning crane you can ride, steel bridge to a pier.
+- **Fort Indestructible** — walls with battlements and corner towers, three drivable two-seat tanks (fire: a tank), a helicopter whose rotor spins up with a pilot and whose blades kill, radio tower, barracks. No keep.
+- **Furious Station** — canopy over four pump islands, food mart (fire: microwaves), car wash, five cars and two fuel tankers you can drive, climbable pole sign.
+- **Glass Office** — seven floors round an open atrium, a truss through a roof hatch, road out front.
+- **Happy Home** — tan two-storey house with arched windows, red roof and chimney, slide and seesaw, three pines (fire: back-left curtains).
+- **Heights School** — three-storey school on a hill with classrooms, lockers, library and a climbable clock tower (fire: a classroom bin), gym, playground, sports field.
+- **Launch Land** — space shuttle between two lattice towers; four buttons in order (arm, fuel valves, engines, launch) start a countdown; launches can fail, lightning destroys it on the pad.
+- **Lucky Mart** — green supermarket with aisles, checkouts and a diner (fire: fryer), spinning roof turbines, a truss up the tower at the back. No cars.
+- **Manic Mansion** — three storeys on a grass mound: living room (fire: fireplace), dining room, kitchen, bedrooms, games room; porch, pool, gazebo. No cars.
+- **Modest Headquarters** — twin ten-storey towers on a mound with logos, balconies and a skybridge (fire: 6th floor, left tower).
+- **Party Palace** — walled fair: ticket booths with turnstiles, swinging Viking ship, High-Striker, burger grill, pony carousel, fountain, drop tower, popcorn machine (fire), whack-a-mole with its own tune.
+- **Prison Panic** — twelve cells, gym, visiting room and the snapshot room whose orange pad locks you in a cell; cafeteria (fire: bin), barbed wire (30 damage), basketball court, one watchtower.
+- **Rainbow Ride** — giant rainbow Ferris wheel with twenty level-hanging gondolas (fire: a gondola), hub platform, ticket booth and stands.
+- **Rakish Refinery** — storage tanks, distillation columns with catwalks, burning flare stack, pipe racks, boiler house (fire) and chimney, control building.
+- **Raving Raceway** — circuit round the island with eight drivable racecars on the grid (fire: one car), start lights, grandstand, pits, race control.
+- **Safety Second** — construction site: unfinished building with stairs, scaffolding, swinging tower crane, drivable excavator, site office, lockers (fire).
+- **Sky Tower** — three stepped tiers with balconies and a sparkling rod on the spire (fire: a first-floor window).
+- **Sunny Ranch** — white fence round the farm, red barn with hayloft (fire: the lantern inside), two silos, windmill, cornfield, cows, pond, drivable tractor. No farmhouse.
+- **Surf Central** — teal surf shop (fire: the stairs), boardwalk, pier and bait hut, lifeguard tower, snack shack.
+- **Trailer Park** — T-shaped path, four coloured houses and a white trailer, central water tower with a blinking light, eleven trees (fire: the oak by the tower). No cars.
 
 ## Where the interface details come from
 
@@ -122,13 +148,14 @@ src/world.js               Rapier world, Parts, instanced rendering, weld graph
 src/character.js           humanoid controller (player and bots)
 src/avatar.js              Noob avatar model + animation
 src/island.js              island, ocean, lobby tower, scoreboard, Weather Machine
-src/builder.js             map-building DSL (walls with windows, buildings with stairs, props, cars)
-src/maps.js                the 23 maps
+src/builder.js             map-building DSL (walls with windows, buildings with stairs or open frames, props, vehicles)
+src/maps.js, src/maps/     the 23 maps, one file each (helpers.js: shared pieces, rig() for moving rides)
 src/disasters/*.js         one module per disaster, same interface (host decides, everyone plays it)
 src/round.js               RoundManager
 src/bots.js                simulated players
 src/nav.js                 bots' walk grid and A* pathfinding
 tools/stamp.mjs            stamps a new build id (cache busting) before a commit
+tools/test/                headless map, bot, ride, round and multiplayer tests (see its README)
 src/ui.js, data.js         HUD and saved data/badges
 src/effects.js, audio.js   sky/weather/particles and synthesized sound
 ```

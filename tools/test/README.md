@@ -20,3 +20,8 @@ path in `common.mjs` / `round.mjs` if yours lives elsewhere.
 - `node navgrid.mjs "Map" x0 z0 x1 z1` – prints the bots' walk grid over a rectangle (`#` blocked).
 - `node fp.mjs "Map" ax az bx bz` – runs the bots' A* between two ground points.
 - `node ray.mjs "Map" x y z` – what part lies straight below a point.
+- `./rounds.sh` – a live fast round with bots on every map (cycling the disasters); reports page errors.
+- `node relay.mjs [port]` – a tiny local Nostr relay (needs the `ws` package: `npm i ws`) so two headless
+  browsers can play together offline; then `node mp.mjs` (Party Palace: host/client, rides seen on the
+  client, a client's button press runs on the host) and `node mp2.mjs "Prison Panic"` (the snapshot pad
+  works for a client and the cell door shuts on both machines).
