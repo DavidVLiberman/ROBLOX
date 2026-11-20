@@ -360,7 +360,7 @@ export class MapBuilder {
     if (furnish ?? !interior) this.furnish(info, floorColor);
     // keep this building's spots out of the furniture just added
     const props = this.parts.slice(firstPart).filter(p => p.alive && p.collide).map(p => this.world.aabb(p));
-    const blocked = (q) => props.some(a => q.x > a.minX - 1.2 && q.x < a.maxX + 1.2 && q.z > a.minZ - 1.2 && q.z < a.maxZ + 1.2 && a.maxY > q.y + 0.4 && a.minY < q.y + 4.5);
+    const blocked = (q) => props.some(a => q.x > a.minX - 1.7 && q.x < a.maxX + 1.7 && q.z > a.minZ - 1.7 && q.z < a.maxZ + 1.7 && a.maxY > q.y + 0.4 && a.minY < q.y + 4.5);
     for (let i = firstSpot; props.length && i < this.spots.length; i++) {
       const sp = this.spots[i], end = sp.path[sp.path.length - 1];
       if (!blocked(sp.pos)) continue;
