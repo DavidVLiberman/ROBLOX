@@ -16,3 +16,6 @@ path in `common.mjs` / `round.mjs` if yours lives elsewhere.
 - `node drive.mjs "Map" [vehicle] [seconds] [keys]` – sit in a vehicle and hold keys (e.g. `w` or `w,a`).
 - `node ride.mjs "Map" <seat> [seconds]` – sit in a seat and check the ride carries you.
 - `node heli.mjs` – Fort Indestructible: the pilot spins the rotor up and its blades kill someone on the roof.
+- `node jail.mjs` – Prison Panic: the orange pad locks you in a cell, the door reopens later, the barbed wire does 30 damage.
+- `node navgrid.mjs "Map" x0 z0 x1 z1` – prints the bots' walk grid over a rectangle (`#` blocked).
+- `node fp.mjs "Map" ax az bx bz` – runs the bots' A* between two ground points.

@@ -407,18 +407,23 @@ class Game {
     let best = null, bd = Infinity;
     const list = [...this.interactables, ...(this.map?.interact || [])];
     for (const it of list) {
-      if (it.cond && !it.cond()) continue;
+      if (it.hidden || (it.cond && !it.cond())) continue;
       const d = it.pos.distanceTo(p.pos);
       if (d < it.radius && d < bd) { bd = d; best = it; }
     }
     if (fire && best) {
       const mi = this.map?.interact?.indexOf(best) ?? -1;
-      if (mi >= 0 && this.net) {
-        if (this.isAuthority) this.runMapAction(mi, true);
-        else this.net.send({ t: 'req', k: 'act', i: mi }, this.net.hostId);
-      } else best.action(p);
+      if (mi >= 0) this.triggerMapAction(mi);
+      else best.action(p);
     }
     return best;
+  }
+
+  // run map action i on every machine (the host runs it and tells everyone)
+  triggerMapAction(i) {
+    if (!this.net) this.runMapAction(i, false);
+    else if (this.isAuthority) this.runMapAction(i, true);
+    else this.net.send({ t: 'req', k: 'act', i }, this.net.hostId);
   }
 
   // ---------- player control ----------
