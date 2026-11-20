@@ -19,3 +19,4 @@ path in `common.mjs` / `round.mjs` if yours lives elsewhere.
 - `node jail.mjs` – Prison Panic: the orange pad locks you in a cell, the door reopens later, the barbed wire does 30 damage.
 - `node navgrid.mjs "Map" x0 z0 x1 z1` – prints the bots' walk grid over a rectangle (`#` blocked).
 - `node fp.mjs "Map" ax az bx bz` – runs the bots' A* between two ground points.
+- `node ray.mjs "Map" x y z` – what part lies straight below a point.
